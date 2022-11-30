@@ -828,8 +828,7 @@ def validate_integer(property_name, var, min_val=-np.inf, max_val=np.inf):
         raise ValueError(
             f"'{property_name}' must be a value between {min_val} and {max_val}"
         )
-    else:
-        return var
+    return var
 
 
 def validate_float(
@@ -886,8 +885,7 @@ def validate_float(
         raise ValueError(
             f"'{property_name}' must be a value in the range " + value_range_string
         )
-    else:
-        return var
+    return var
 
 
 def validate_list_of_types(property_name, var, class_type, ensure_unique=False):
@@ -909,22 +907,21 @@ def validate_list_of_types(property_name, var, class_type, ensure_unique=False):
     list
         Returns the list once validated
     """
-    if isinstance(var, list):
-        pass
-    elif isinstance(var, class_type):
-        var = [var]
-    else:
+    if not isinstance(var, list) or not isinstance(var, class_type):
         raise TypeError(f"'{property_name}' must be a list of '{class_type}'")
 
+    if isinstance(var, class_type):
+        var = [var]
+
     is_true = [isinstance(x, class_type) for x in var]
-    if np.all(is_true):
-        if ensure_unique and len(set(var)) != len(var):
-            raise ValueError(
-                f"The '{property_name}' list must be unique. Cannot re-use items"
-            )
-        return var
-    else:
+    if not np.all(is_true):
         raise TypeError(f"'{property_name}' must be a list of '{class_type}'")
+
+    if ensure_unique and len(set(var)) != len(var):
+        raise ValueError(
+            f"The '{property_name}' list must be unique. Cannot re-use items"
+        )
+    return var
 
 
 def validate_location_property(property_name, var, dim=None):
@@ -953,16 +950,11 @@ def validate_location_property(property_name, var, dim=None):
         raise ValueError(
             f"'{property_name}' must be 1D array_like, got {len(var.shape)}D"
         )
-
-    if dim is None:
-        return var
-    else:
-        if len(var) == dim:
-            return var
-        else:
-            raise ValueError(
-                f"'{property_name}' must be array_like with shape '{dim}', got '{len(var)}'"
-            )
+    if dim is not None and len(var) != dim:
+        raise ValueError(
+            f"'{property_name}' must be array_like with shape '{dim}', got '{len(var)}'"
+        )
+    return var
 
 
 def validate_ndarray_with_shape(property_name, var, shape=None, dtype=float):
