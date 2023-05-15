@@ -63,7 +63,6 @@ class PGIsmallness(Smallness):
         **kwargs,
     ):
         self.gmmref = copy.deepcopy(gmmref)
-        self.gmmref.order_clusters_GM_weight()
         self.approx_gradient = approx_gradient
         self.approx_eval = approx_eval
         self.approx_hessian = approx_hessian
@@ -716,7 +715,6 @@ class PGI(ComboObjectiveFunction):
         self._maplist = maplist
         self.regularization_mesh = mesh
         self.gmmref = copy.deepcopy(gmmref)
-        self.gmmref.order_clusters_GM_weight()
 
         objfcts = [
             PGIsmallness(

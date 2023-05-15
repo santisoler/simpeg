@@ -155,41 +155,6 @@ class WeightedGaussianMixture(GaussianMixture):
             self.covariances_, self.covariance_type
         )
 
-    def order_clusters_GM_weight(self, outputindex=False):
-        """Order clusters by decreasing weights
-
-        PARAMETERS
-        ----------
-        outputindex : bool, default: ``True``
-            If ``True``, return the sorting index
-
-        RETURN
-        ------
-        np.ndarray
-            Sorting index
-        """
-        if self.weights_.ndim == 1:
-            indx = np.argsort(self.weights_, axis=0)[::-1]
-            self.weights_ = self.weights_[indx].reshape(self.weights_.shape)
-        else:
-            indx = np.argsort(self.weights_.sum(axis=0), axis=0)[::-1]
-            self.weights_ = self.weights_[:, indx].reshape(self.weights_.shape)
-
-        self.means_ = self.means_[indx].reshape(self.means_.shape)
-
-        if self.covariance_type == "tied":
-            pass
-        else:
-            self.precisions_ = self.precisions_[indx].reshape(self.precisions_.shape)
-            self.covariances_ = self.covariances_[indx].reshape(self.covariances_.shape)
-
-        self.precisions_cholesky_ = _compute_precision_cholesky(
-            self.covariances_, self.covariance_type
-        )
-
-        if outputindex:
-            return indx
-
     def _check_weights(self, weights, n_components, n_samples):
         """
         [modified from Scikit-Learn.mixture.gaussian_mixture]
@@ -876,65 +841,6 @@ class GaussianMixtureWithPrior(WeightedGaussianMixture):
         )
         # setKwargs(self, **kwargs)
 
-    def order_cluster(self, outputindex=False):
-        """Order cluster
-
-        Arrange the clusters of gmm in the same order as those of gmmref,
-        based on their relative similarities and priorizing first the most proeminent
-        clusters (highest proportions)
-
-        Parameters
-        ----------
-        outputindex : bool, default: ``False``
-            If ``True``, return the ordering index for the clusters of GMM.
-
-        Returns
-        -------
-        numpy.ndarray of int
-            Returns the ordering index for the clusters of GMM if
-            *outputindex* is ``True``
-        """
-        self.order_clusters_GM_weight()
-
-        idx_ref = np.ones(len(self.gmmref.means_), dtype=bool)
-
-        indx = []
-
-        for i in range(self.n_components):
-            dis = self._estimate_log_prob(
-                self.gmmref.means_[idx_ref].reshape(
-                    [-1] + [d for d in self.gmmref.means_.shape[1:]]
-                )
-            )
-            id_dis = dis.argmax(axis=0)[i]
-            idrefmean = np.where(
-                np.all(
-                    self.gmmref.means_ == self.gmmref.means_[idx_ref][id_dis], axis=1
-                )
-            )[0][0]
-            indx.append(idrefmean)
-            idx_ref[idrefmean] = False
-
-        self.means_ = self.means_[indx].reshape(self.means_.shape)
-
-        if self.weights_.ndim == 1:
-            self.weights_ = self.weights_[indx].reshape(self.weights_.shape)
-        else:
-            self.weights_ = self.weights_[:, indx].reshape(self.weights_.shape)
-
-        if self.covariance_type == "tied":
-            pass
-        else:
-            self.precisions_ = self.precisions_[indx].reshape(self.precisions_.shape)
-            self.covariances_ = self.covariances_[indx].reshape(self.covariances_.shape)
-
-        self.precisions_cholesky_ = _compute_precision_cholesky(
-            self.covariances_, self.covariance_type
-        )
-
-        if outputindex:
-            return indx
-
     def update_gmm_with_priors(self, debug=False):
         """Update GMM with priors
 
@@ -948,7 +854,6 @@ class GaussianMixtureWithPrior(WeightedGaussianMixture):
         """
 
         self.compute_clusters_precisions()
-        self.order_cluster()
 
         if debug:
             print("before update means: ", self.means_)

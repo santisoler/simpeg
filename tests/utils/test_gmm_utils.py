@@ -202,7 +202,6 @@ class TestGMMs(unittest.TestCase):
             warm_start=True,
         )
         clfref.fit(model_prior)
-        clfref.order_clusters_GM_weight()
 
         clf = GaussianMixtureWithPrior(
             gmmref=clfref,
