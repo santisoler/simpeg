@@ -2,6 +2,16 @@ import numpy as np
 import scipy.constants as constants
 from geoana.kernels import prism_fz, prism_fzx, prism_fzy, prism_fzz
 from scipy.constants import G as NewtG
+import discretize
+
+try:
+    import choclo
+except ImportError:
+    choclo = None
+    numba = None
+else:
+    import numba
+
 
 from SimPEG import props
 from SimPEG.utils import mkvc, sdiag
@@ -31,13 +41,16 @@ class Simulation3DIntegral(BasePFSimulation):
 
     rho, rhoMap, rhoDeriv = props.Invertible("Density")
 
-    def __init__(self, mesh, rho=None, rhoMap=None, **kwargs):
+    def __init__(self, mesh, rho=None, rhoMap=None, engine="geoana", **kwargs):
         super().__init__(mesh, **kwargs)
         self.rho = rho
         self.rhoMap = rhoMap
         self._G = None
         self._gtg_diagonal = None
         self.modelMap = self.rhoMap
+        if engine == "choclo" and choclo is None:
+            raise ImportError("Choclo is not installed.")
+        self.engine = engine
 
     def fields(self, m):
         self.model = m
@@ -95,9 +108,31 @@ class Simulation3DIntegral(BasePFSimulation):
         Gravity forward operator
         """
         if getattr(self, "_G", None) is None:
-            self._G = self.linear_operator()
+            if self.engine == "geoana":
+                self._G = self.linear_operator()
+            elif self.engine == "choclo":
+                print("computing G with Choclo")
+                self._G = self._compute_g_with_choclo()
 
         return self._G
+
+    def _compute_g_with_choclo(self):
+        """
+        Compute sensitivity matrix using Choclo
+        """
+        # Get observation points
+        coords = np.array(
+            list(c[0] for c in self.survey._location_component_iterator())
+        ).T
+        # Get prisms
+        if isinstance(self.mesh, discretize.TensorMesh):
+            prisms = np.array(tensormesh_to_prisms(self.mesh))[self.ind_active]
+        else:
+            raise NotImplementedError(
+                "Using choclo as engine only works with TensorMesh for now."
+            )
+        jacobian = build_jacobian(coords, prisms, dtype=self.sensitivity_dtype)
+        return jacobian
 
     @property
     def gtg_diagonal(self):
@@ -303,3 +338,69 @@ class Simulation3DDifferential(BasePDESimulation):
         gField = 4.0 * np.pi * NewtG * 1e8 * self._Div * u
 
         return {"G": gField, "u": u}
+
+
+@numba.jit(nopython=True, parallel=True)
+def build_jacobian(coordinates, prisms, dtype):
+    """
+    Build a sensitivity matrix for gravity_u of a prism
+    """
+    # Unpack coordinates of the observation points
+    easting, northing, upward = coordinates[:]
+    # Initialize an empty 2d array for the sensitivity matrix
+    n_coords = easting.size
+    n_prisms = prisms.shape[0]
+    jacobian = np.empty((n_coords, n_prisms), dtype=dtype)
+    # Compute the gravity_u field that each prism generate on every observation
+    # point, considering that they have a unit density
+    for i in numba.prange(len(easting)):
+        for j in range(prisms.shape[0]):
+            jacobian[i, j] = choclo.prism.gravity_u(
+                easting[i],
+                northing[i],
+                upward[i],
+                prisms[j, 0],
+                prisms[j, 1],
+                prisms[j, 2],
+                prisms[j, 3],
+                prisms[j, 4],
+                prisms[j, 5],
+                1.0,
+            )
+    return jacobian
+
+
+def tensormesh_to_prisms(mesh):
+    """
+    Converts a :class:`discretize.TensorMesh` into a set of prisms
+
+    The prisms are listed following a FORTRAN order (the one used in
+    :mod:`SimPEG`): first changing the ``upward`` coordinate, then the
+    ``northing`` and then the ``easting`` one.
+
+    Parameters
+    ----------
+    mesh : :class:`discretize.TensorMesh`
+
+    Returns
+    -------
+    prisms : list
+    """
+    # Get centers of the prisms along each dimension
+    centers_easting = mesh.cell_centers_x
+    centers_northing = mesh.cell_centers_y
+    centers_upward = mesh.cell_centers_z
+    # Compute the west, east, south, north, bottom and top boundaries
+    west = centers_easting - mesh.h[0] / 2
+    east = centers_easting + mesh.h[0] / 2
+    south = centers_northing - mesh.h[1] / 2
+    north = centers_northing + mesh.h[1] / 2
+    bottom = centers_upward - mesh.h[2] / 2
+    top = centers_upward + mesh.h[2] / 2
+    # Build the prisms
+    prisms = []
+    for b, t in zip(bottom, top):
+        for s, n in zip(south, north):
+            for w, e in zip(west, east):
+                prisms.append([w, e, s, n, b, t])
+    return prisms
