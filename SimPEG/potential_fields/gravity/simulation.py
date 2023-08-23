@@ -91,6 +91,7 @@ class Simulation3DChoclo:
         # initialize private attributes
         self._G = None
         self._cell_nodes = None
+        self._active_cell_nodes = None
         self._n_active_cells = None
 
     @property
@@ -123,24 +124,30 @@ class Simulation3DChoclo:
             self._n_active_cells = np.sum(self.ind_active)
         return self._n_active_cells
 
+    @property
+    def active_cell_nodes(self):
+        """
+        Indices of nodes for each active cell in the mesh.
+        """
+        if self._active_cell_nodes is None:
+            self._active_cell_nodes = self.cell_nodes[self.ind_active]
+        return self._active_cell_nodes
+
     def _get_tensormesh_cell_nodes(self):
         """Dumb implementation of cell_nodes for a TensorMesh"""
-        cell_nodes = []
-        for k in range(self.mesh.shape_cells[2]):
-            for j in range(self.mesh.shape_cells[1]):
-                for i in range(self.mesh.shape_cells[0]):
-                    cell_indices = [
-                        np.ravel_multi_index(
-                            (i + dx, j + dy, k + dz),
-                            dims=self.mesh.shape_nodes,
-                            order="F",
-                        )
-                        for dz in (0, 1)
-                        for dy in (0, 1)
-                        for dx in (0, 1)
-                    ]
-                    cell_nodes.append(cell_indices)
-        return np.array(cell_nodes)
+        inds = np.arange(self.mesh.n_nodes).reshape(self.mesh.shape_nodes, order="F")
+        cell_nodes = [
+            inds[:-1, :-1, :-1].reshape(-1, order="F"),
+            inds[1:, :-1, :-1].reshape(-1, order="F"),
+            inds[:-1, 1:, :-1].reshape(-1, order="F"),
+            inds[1:, 1:, :-1].reshape(-1, order="F"),
+            inds[:-1, :-1, 1:].reshape(-1, order="F"),
+            inds[1:, :-1, 1:].reshape(-1, order="F"),
+            inds[:-1, 1:, 1:].reshape(-1, order="F"),
+            inds[1:, 1:, 1:].reshape(-1, order="F"),
+        ]
+        cell_nodes = np.stack(cell_nodes, axis=-1)
+        return cell_nodes
 
     def fields(self, m):
         """
@@ -175,6 +182,7 @@ class Simulation3DChoclo:
         # Allocate sensitivity matrix
         shape = (self.survey.nD, self.n_active_cells)
         sensitivity_matrix = np.empty(shape, dtype=self.sensitivity_dtype)
+        active_cell_nodes = self.active_cell_nodes
         # Start filling the sensitivity matrix
         for component, receiver_indices in components.items():
             kernel_func = CHOCLO_KERNELS[component]
@@ -183,7 +191,7 @@ class Simulation3DChoclo:
                 receiver_indices,
                 nodes,
                 sensitivity_matrix,
-                self.cell_nodes[self.ind_active],
+                active_cell_nodes,
                 kernel_func,
             )
             if component in ("gx", "gy", "gz"):
