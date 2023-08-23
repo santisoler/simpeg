@@ -185,7 +185,6 @@ class Simulation3DChoclo:
                 sensitivity_matrix,
                 self.cell_nodes[self.ind_active],
                 kernel_func,
-                dtype=self.sensitivity_dtype,
             )
             if component in ("gx", "gy", "gz"):
                 sensitivity_matrix[receiver_indices] *= 1e8  # convert to mgal
@@ -240,7 +239,6 @@ def fill_sensitivity_matrix(
     sensitivity_matrix,
     cell_nodes,
     kernel_func,
-    dtype,
 ):
     """
     Fill the sensitivity matrix
@@ -254,21 +252,22 @@ def fill_sensitivity_matrix(
         # Allocate vector for kernels evaluated on mesh nodes
         kernels = np.empty(n_nodes)
         for j in range(n_nodes):
-            x, y, z = receivers[receiver_index, :] - nodes[j, :]
-            distance = np.sqrt(x**2 + y**2 + z**2)
-            kernels[j] = kernel_func(x, y, z, distance)
+            dx = receivers[receiver_index, 0] - nodes[j, 0]
+            dy = receivers[receiver_index, 1] - nodes[j, 1]
+            dz = receivers[receiver_index, 2] - nodes[j, 2]
+            distance = np.sqrt(dx**2 + dy**2 + dz**2)
+            kernels[j] = kernel_func(dx, dy, dz, distance)
         # Compute sensitivity matrix elements from the kernel values
         for k in range(n_cells):
-            kernels_cell = kernels[cell_nodes[k, :]]
-            sensitivity_matrix[receiver_index, k] = (
-                -kernels_cell[0]
-                + kernels_cell[1]
-                + kernels_cell[2]
-                - kernels_cell[3]
-                + kernels_cell[4]
-                - kernels_cell[5]
-                - kernels_cell[6]
-                + kernels_cell[7]
+            sensitivity_matrix[i, k] = (
+                -kernels[cell_nodes[k, 0]]
+                + kernels[cell_nodes[k, 1]]
+                + kernels[cell_nodes[k, 2]]
+                - kernels[cell_nodes[k, 3]]
+                + kernels[cell_nodes[k, 4]]
+                - kernels[cell_nodes[k, 5]]
+                - kernels[cell_nodes[k, 6]]
+                + kernels[cell_nodes[k, 7]]
             )
 
 
