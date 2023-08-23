@@ -252,7 +252,7 @@ def fill_sensitivity_matrix(
     for i in prange(n_receivers):
         receiver_index = receivers_indices[i]
         # Allocate vector for kernels evaluated on mesh nodes
-        kernels = np.empty(n_nodes, dtype=dtype)
+        kernels = np.empty(n_nodes)
         for j in range(n_nodes):
             x, y, z = receivers[receiver_index, :] - nodes[j, :]
             distance = np.sqrt(x**2 + y**2 + z**2)
