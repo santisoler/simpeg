@@ -73,9 +73,14 @@ class Simulation3DChoclo:
         Array that indicates which cells in ``mesh`` are active cells.
     sensitivity_dtype : numpy.dtype, optional
         Data type that will be used to build the sensitivity matrix.
+    parallel : bool, optional
+        If True, the simulation will run in parallel. If False, it will
+        run in serial.
     """
 
-    def __init__(self, survey, mesh, ind_active=None, sensitivity_dtype=np.float32):
+    def __init__(
+        self, survey, mesh, ind_active=None, sensitivity_dtype=np.float32, parallel=True
+    ):
         if choclo is None:
             raise ImportError("Choclo is not installed")
         self.survey = survey
@@ -93,6 +98,10 @@ class Simulation3DChoclo:
         self._cell_nodes = None
         self._active_cell_nodes = None
         self._n_active_cells = None
+        if parallel:
+            self._fill_sensitivity_matrix = _fill_sensitivity_matrix_parallel
+        else:
+            self._fill_sensitivity_matrix = _fill_sensitivity_matrix_serial
 
     @property
     def G(self):
@@ -186,7 +195,7 @@ class Simulation3DChoclo:
         # Start filling the sensitivity matrix
         for component, receiver_indices in components.items():
             kernel_func = CHOCLO_KERNELS[component]
-            fill_sensitivity_matrix(
+            self._fill_sensitivity_matrix(
                 receivers,
                 receiver_indices,
                 nodes,
@@ -239,8 +248,7 @@ class Simulation3DChoclo:
         return receivers, components
 
 
-@jit(nopython=True, parallel=True)
-def fill_sensitivity_matrix(
+def _fill_sensitivity_matrix(
     receivers,
     receivers_indices,
     nodes,
@@ -277,6 +285,14 @@ def fill_sensitivity_matrix(
                 - kernels[cell_nodes[k, 6]]
                 + kernels[cell_nodes[k, 7]]
             )
+
+
+_fill_sensitivity_matrix_parallel = jit(nopython=True, parallel=True)(
+    _fill_sensitivity_matrix
+)
+_fill_sensitivity_matrix_serial = jit(nopython=True, parallel=False)(
+    _fill_sensitivity_matrix
+)
 
 
 class Simulation3DIntegral(BasePFSimulation):
