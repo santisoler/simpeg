@@ -195,6 +195,7 @@ class Simulation3DChoclo:
         # Start filling the sensitivity matrix
         for component, receiver_indices in components.items():
             kernel_func = CHOCLO_KERNELS[component]
+            conversion_factor = self._get_conversion_factor(component)
             self._fill_sensitivity_matrix(
                 receivers,
                 receiver_indices,
@@ -202,13 +203,20 @@ class Simulation3DChoclo:
                 sensitivity_matrix,
                 active_cell_nodes,
                 kernel_func,
+                conversion_factor,
             )
-            if component in ("gx", "gy", "gz"):
-                sensitivity_matrix[receiver_indices] *= 1e8  # convert to mgal
-            elif component in ("gxx", "gyy", "gzz", "gxy", "gxz", "gyz"):
-                sensitivity_matrix[receiver_indices] *= 1e12  # convert to Eotvos
         sensitivity_matrix *= constants.G
         return sensitivity_matrix
+
+    def _get_conversion_factor(self, component):
+        """
+        Return conversion factor for the given component
+        """
+        if component in ("gx", "gy", "gz"):
+            conversion_factor = 1e8
+        elif component in ("gxx", "gyy", "gzz", "gxy", "gxz", "gyz"):
+            conversion_factor = 1e12
+        return conversion_factor
 
     def _get_nodes(self):
         """Gather nodes from mesh"""
@@ -255,9 +263,16 @@ def _fill_sensitivity_matrix(
     sensitivity_matrix,
     cell_nodes,
     kernel_func,
+    conversion_factor,
 ):
     """
     Fill the sensitivity matrix
+
+    Notes
+    -----
+    The conversion factor is applied here to each row of the sensitivity matrix
+    because it's more efficient than doing it afterwards: it would require to
+    index the rows that corresponds to each component.
     """
     n_receivers = receivers_indices.size
     n_nodes = nodes.shape[0]
@@ -275,15 +290,18 @@ def _fill_sensitivity_matrix(
             kernels[j] = kernel_func(dx, dy, dz, distance)
         # Compute sensitivity matrix elements from the kernel values
         for k in range(n_cells):
-            sensitivity_matrix[i, k] = (
-                -kernels[cell_nodes[k, 0]]
-                + kernels[cell_nodes[k, 1]]
-                + kernels[cell_nodes[k, 2]]
-                - kernels[cell_nodes[k, 3]]
-                + kernels[cell_nodes[k, 4]]
-                - kernels[cell_nodes[k, 5]]
-                - kernels[cell_nodes[k, 6]]
-                + kernels[cell_nodes[k, 7]]
+            sensitivity_matrix[i, k] = np.float32(
+                conversion_factor
+                * (
+                    -kernels[cell_nodes[k, 0]]
+                    + kernels[cell_nodes[k, 1]]
+                    + kernels[cell_nodes[k, 2]]
+                    - kernels[cell_nodes[k, 3]]
+                    + kernels[cell_nodes[k, 4]]
+                    - kernels[cell_nodes[k, 5]]
+                    - kernels[cell_nodes[k, 6]]
+                    + kernels[cell_nodes[k, 7]]
+                )
             )
 
 
