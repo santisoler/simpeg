@@ -283,9 +283,9 @@ def _fill_sensitivity_matrix(
         # Allocate vector for kernels evaluated on mesh nodes
         kernels = np.empty(n_nodes)
         for j in range(n_nodes):
-            dx = receivers[receiver_index, 0] - nodes[j, 0]
-            dy = receivers[receiver_index, 1] - nodes[j, 1]
-            dz = receivers[receiver_index, 2] - nodes[j, 2]
+            dx = nodes[j, 0] - receivers[receiver_index, 0]
+            dy = nodes[j, 1] - receivers[receiver_index, 1]
+            dz = nodes[j, 2] - receivers[receiver_index, 2]
             distance = np.sqrt(dx**2 + dy**2 + dz**2)
             kernels[j] = kernel_func(dx, dy, dz, distance)
         # Compute sensitivity matrix elements from the kernel values
