@@ -98,10 +98,11 @@ class Simulation3DChoclo:
         self._cell_nodes = None
         self._active_cell_nodes = None
         self._n_active_cells = None
-        if parallel:
-            self._fill_sensitivity_matrix = _fill_sensitivity_matrix_parallel
-        else:
-            self._fill_sensitivity_matrix = _fill_sensitivity_matrix_serial
+
+        # Define jit function for filling the sensitivity matrix
+        self._fill_sensitivity_matrix = jit(nopython=True, parallel=parallel)(
+            _fill_sensitivity_matrix
+        )
 
     @property
     def G(self):
@@ -303,14 +304,6 @@ def _fill_sensitivity_matrix(
                     + kernels[cell_nodes[k, 7]]
                 )
             )
-
-
-_fill_sensitivity_matrix_parallel = jit(nopython=True, parallel=True)(
-    _fill_sensitivity_matrix
-)
-_fill_sensitivity_matrix_serial = jit(nopython=True, parallel=False)(
-    _fill_sensitivity_matrix
-)
 
 
 class Simulation3DIntegral(BasePFSimulation):
