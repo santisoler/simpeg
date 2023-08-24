@@ -290,7 +290,7 @@ def _fill_sensitivity_matrix(
             kernels[j] = kernel_func(dx, dy, dz, distance)
         # Compute sensitivity matrix elements from the kernel values
         for k in range(n_cells):
-            sensitivity_matrix[i, k] = np.float32(
+            sensitivity_matrix[receiver_index, k] = np.float32(
                 conversion_factor
                 * (
                     -kernels[cell_nodes[k, 0]]
