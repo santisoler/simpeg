@@ -214,7 +214,7 @@ class Simulation3DChoclo:
         """
         if component in ("gx", "gy", "gz"):
             conversion_factor = 1e8
-        elif component in ("gxx", "gyy", "gzz", "gxy", "gxz", "gyz"):
+        elif component in ("gxx", "gyy", "gzz", "gxy", "gxz", "gyz", "guv"):
             conversion_factor = 1e12
         return conversion_factor
 
