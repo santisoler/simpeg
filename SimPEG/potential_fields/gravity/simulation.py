@@ -92,12 +92,10 @@ class Simulation3DChoclo:
         else:
             ind_active = validate_active_indices("ind_active", ind_active, mesh.n_cells)
         self.ind_active = ind_active
+        self.n_active_cells = np.sum(self.ind_active)
 
         # initialize private attributes
         self._G = None
-        self._cell_nodes = None
-        self._active_cell_nodes = None
-        self._n_active_cells = None
 
         # Define jit function for filling the sensitivity matrix
         self._fill_sensitivity_matrix = jit(nopython=True, parallel=parallel)(
@@ -113,35 +111,17 @@ class Simulation3DChoclo:
             self._G = self._sensitivity_matrix()
         return self._G
 
-    @property
-    def cell_nodes(self):
+    def _get_cell_nodes(self):
         """
-        Indices of nodes for each cell in the mesh.
+        Return indices of nodes for each cell in the mesh.
         """
-        if self._cell_nodes is None:
-            if isinstance(self.mesh, discretize.TreeMesh):
-                self._cell_nodes = self.mesh.cell_nodes
-            elif isinstance(self.mesh, discretize.TensorMesh):
-                self._cell_nodes = self._get_tensormesh_cell_nodes()
-        return self._cell_nodes
-
-    @property
-    def n_active_cells(self):
-        """
-        Number of active cells in the mesh.
-        """
-        if self._n_active_cells is None:
-            self._n_active_cells = np.sum(self.ind_active)
-        return self._n_active_cells
-
-    @property
-    def active_cell_nodes(self):
-        """
-        Indices of nodes for each active cell in the mesh.
-        """
-        if self._active_cell_nodes is None:
-            self._active_cell_nodes = self.cell_nodes[self.ind_active]
-        return self._active_cell_nodes
+        if isinstance(self.mesh, discretize.TreeMesh):
+            cell_nodes = self.mesh.cell_nodes
+        elif isinstance(self.mesh, discretize.TensorMesh):
+            cell_nodes = self._get_tensormesh_cell_nodes()
+        else:
+            raise TypeError(f"Invalid mesh of type {self.mesh.__class__.__name__}.")
+        return cell_nodes
 
     def _get_tensormesh_cell_nodes(self):
         """Dumb implementation of cell_nodes for a TensorMesh"""
@@ -189,10 +169,11 @@ class Simulation3DChoclo:
         receivers, components = self._get_receivers()
         # Gather nodes
         nodes = self._get_nodes()
+        # Gather indices of nodes for each active cell in the mesh
+        active_cell_nodes = self._get_cell_nodes()[self.ind_active]
         # Allocate sensitivity matrix
         shape = (self.survey.nD, self.n_active_cells)
         sensitivity_matrix = np.empty(shape, dtype=self.sensitivity_dtype)
-        active_cell_nodes = self.active_cell_nodes
         # Start filling the sensitivity matrix
         for component, receiver_indices in components.items():
             kernel_func = CHOCLO_KERNELS[component]
