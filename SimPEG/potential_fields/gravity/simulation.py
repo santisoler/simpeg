@@ -10,7 +10,7 @@ from SimPEG.utils import mkvc, sdiag
 from ...base import BasePDESimulation
 from ..base import BaseEquivalentSourceLayerSimulation, BasePFSimulation
 from ...simulation import LinearSimulation
-from ...utils import validate_active_indices
+from ...utils import validate_active_indices, validate_string
 
 try:
     import choclo
@@ -66,14 +66,24 @@ class Simulation3DChoclo(LinearSimulation):
 
     Parameters
     ----------
-    survey : SimPEG.potential_fields.gravity.Survey
-        Gravity survey with information of the receivers.
     mesh : discretize.TreeMesh or discretize.TensorMesh
         Mesh use to run the gravity simulation.
+    survey : SimPEG.potential_fields.gravity.Survey
+        Gravity survey with information of the receivers.
     ind_active : (n_cells) array, optional
         Array that indicates which cells in ``mesh`` are active cells.
+    rho : array
+    rhoMap : mapping
     sensitivity_dtype : numpy.dtype, optional
         Data type that will be used to build the sensitivity matrix.
+    store_sensitivities : str
+        Options for storing sensitivity matrix. There are 3 options
+
+        - 'ram': sensitivities are stored in the computer's RAM
+        - 'disk': sensitivities are written to a directory
+        - 'forward_only': you intend only do perform a forward simulation and
+          sensitivities do not need to be stored
+
     parallel : bool, optional
         If True, the simulation will run in parallel. If False, it will
         run in serial.
@@ -83,19 +93,23 @@ class Simulation3DChoclo(LinearSimulation):
 
     def __init__(
         self,
-        survey,
         mesh,
+        survey,
         ind_active=None,
         rho=None,
         rhoMap=None,
         sensitivity_dtype=np.float32,
+        store_sensitivities="ram",
         parallel=True,
+        n_processes=None,
+        sensitivity_path=None,
     ):
         if choclo is None:
             raise ImportError("Choclo is not installed")
         super().__init__(mesh=mesh)
         self.survey = survey
         self.sensitivity_dtype = sensitivity_dtype
+        self.store_sensitivities = store_sensitivities
         self.ind_active = ind_active
         # Define physical property and maps
         self.rho = rho
@@ -104,6 +118,48 @@ class Simulation3DChoclo(LinearSimulation):
         # Define jit function for filling the sensitivity matrix
         self._fill_sensitivity_matrix = jit(nopython=True, parallel=parallel)(
             _fill_sensitivity_matrix
+        )
+        # Support n_process for backward compatibility
+        if n_processes is not None:
+            raise NotImplementedError(
+                "Choosing number of processes is not implemented in this "
+                "simulation class. You can use `parallel=True` or `parallel=False` "
+                "to enable or disable parallelization."
+            )
+        # Support sensitivity_path for backward compatibility
+        if sensitivity_path is not None:
+            raise NotImplementedError(
+                "Storing sensitivites in disk is not yet implemented in this "
+                "simulation class."
+            )
+
+    @property
+    def store_sensitivities(self):
+        """Options for storing sensitivities.
+
+        There are 3 options:
+
+        - 'ram': sensitivity matrix stored in RAM
+        - 'disk': sensitivities written and stored to disk
+        - 'forward_only': sensitivities are not store (only use for forward simulation)
+
+        Returns
+        -------
+        {'disk', 'ram', 'forward_only'}
+            A string defining the model type for the simulation.
+        """
+        if not hasattr(self, "_store_sensitivities"):
+            self._store_sensitivities = "ram"
+        return self._store_sensitivities
+
+    @store_sensitivities.setter
+    def store_sensitivities(self, value):
+        if value == "disk":
+            raise NotImplementedError(
+                "Storing sensitivities on disk is not currently supported."
+            )
+        self._store_sensitivities = validate_string(
+            "store_sensitivities", value, ["disk", "ram", "forward_only"]
         )
 
     @property
