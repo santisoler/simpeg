@@ -1,4 +1,5 @@
 import warnings
+from pathlib import Path
 import numpy as np
 import scipy.constants as constants
 from geoana.kernels import prism_fz, prism_fzx, prism_fzy, prism_fzz
@@ -101,6 +102,7 @@ class Simulation3DChoclo(LinearSimulation):
         model_map=None,
         sensitivity_dtype=np.float32,
         store_sensitivities="ram",
+        sensitivity_path=None,
         parallel=True,
         **kwargs,
     ):
@@ -111,6 +113,24 @@ class Simulation3DChoclo(LinearSimulation):
         self.sensitivity_dtype = sensitivity_dtype
         self.store_sensitivities = store_sensitivities
         self.ind_active = ind_active
+        # Sanitize sensitivity_path
+        if self.store_sensitivities == "disk":
+            if sensitivity_path is None:
+                raise ValueError(
+                    "You need to provide a 'sensitivity_path' to store the "
+                    "sensitivity matrix in disk."
+                )
+            else:
+                sensitivity_path = Path(sensitivity_path)
+            if sensitivity_path.is_file():
+                warnings.warn(
+                    f"The file '{sensitivity_path}' already exists. "
+                    "When building the sensitivity matrix this file will "
+                    "be overwritten.",
+                    Warning,
+                    stacklevel=1,
+                )
+        self.sensitivity_path = sensitivity_path
         # Define physical property and maps
         self.density = density
         self.model_map = model_map
@@ -182,13 +202,27 @@ class Simulation3DChoclo(LinearSimulation):
 
     @store_sensitivities.setter
     def store_sensitivities(self, value):
-        if value == "disk":
-            raise NotImplementedError(
-                "Storing sensitivities on disk is not currently supported."
-            )
         self._store_sensitivities = validate_string(
             "store_sensitivities", value, ["disk", "ram", "forward_only"]
         )
+
+    @property
+    def sensitivity_path(self):
+        """Path to store the sensitivity matrix.
+
+        Returns
+        -------
+        str, Path-like object or None
+        """
+        return self._sensitivity_path
+
+    @sensitivity_path.setter
+    def sensitivity_path(self, value):
+        """Assign path for storing sensitivity matrix.
+
+        Add this setter just to override the one in the parent class.
+        """
+        self._sensitivity_path = value
 
     @property
     def ind_active(self) -> np.ndarray:
@@ -370,7 +404,16 @@ class Simulation3DChoclo(LinearSimulation):
         active_cell_nodes = self._get_cell_nodes()[self.ind_active]
         # Allocate sensitivity matrix
         shape = (self.survey.nD, self.n_active_cells)
-        sensitivity_matrix = np.empty(shape, dtype=self.sensitivity_dtype)
+        if self.store_sensitivities == "disk":
+            sensitivity_matrix = np.memmap(
+                self.sensitivity_path,
+                shape=shape,
+                dtype=self.sensitivity_dtype,
+                order="C",  # it's more efficient to write in row major
+                mode="w+",
+            )
+        else:
+            sensitivity_matrix = np.empty(shape, dtype=self.sensitivity_dtype)
         # Start filling the sensitivity matrix
         for component, receiver_indices in components.items():
             kernel_func = CHOCLO_KERNELS[component]
