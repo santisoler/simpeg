@@ -90,7 +90,7 @@ class Simulation3DChoclo(LinearSimulation):
         run in serial.
     """
 
-    density, density_map, density_deriv = props.Invertible("Density")
+    density, model_map, density_deriv = props.Invertible("Density")
 
     def __init__(
         self,
@@ -98,7 +98,7 @@ class Simulation3DChoclo(LinearSimulation):
         survey,
         ind_active=None,
         density=None,
-        density_map=None,
+        model_map=None,
         sensitivity_dtype=np.float32,
         store_sensitivities="ram",
         parallel=True,
@@ -113,7 +113,7 @@ class Simulation3DChoclo(LinearSimulation):
         self.ind_active = ind_active
         # Define physical property and maps
         self.density = density
-        self.density_map = density_map
+        self.model_map = model_map
         # Define jit functions
         self._fill_sensitivity_matrix = jit(nopython=True, parallel=parallel)(
             _fill_sensitivity_matrix
@@ -146,18 +146,18 @@ class Simulation3DChoclo(LinearSimulation):
             )
             self.density = kwargs.pop(key)
         if (key := "rhoMap") in kwargs:
-            if density_map is not None:
+            if model_map is not None:
                 raise ValueError(
-                    f"Can't simultanously pass '{key}' and 'density_map' arguments to "
-                    "this simulation class. Please, use only 'density_map'."
+                    f"Can't simultanously pass '{key}' and 'model_map' arguments to "
+                    "this simulation class. Please, use only 'model_map'."
                 )
             warnings.warn(
                 f"The '{key}' argument will be deprecated. "
-                "Please use 'density_map' instead.",
+                "Please use 'model_map' instead.",
                 FutureWarning,
                 stacklevel=1,
             )
-            self.density_map = kwargs.pop(key)
+            self.model_map = kwargs.pop(key)
         if kwargs:
             keys = "', ".join(kwargs.keys())
             s = "s" if len(kwargs.keys()) > 1 else ""
