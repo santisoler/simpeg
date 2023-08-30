@@ -148,8 +148,6 @@ class Simulation3DChoclo(LinearSimulation):
         {'disk', 'ram', 'forward_only'}
             A string defining the model type for the simulation.
         """
-        if not hasattr(self, "_store_sensitivities"):
-            self._store_sensitivities = "ram"
         return self._store_sensitivities
 
     @store_sensitivities.setter
