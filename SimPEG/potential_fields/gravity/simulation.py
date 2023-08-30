@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 import scipy.constants as constants
 from geoana.kernels import prism_fz, prism_fzx, prism_fzy, prism_fzz
@@ -72,8 +73,8 @@ class Simulation3DChoclo(LinearSimulation):
         Gravity survey with information of the receivers.
     ind_active : (n_cells) array, optional
         Array that indicates which cells in ``mesh`` are active cells.
-    rho : array
-    rhoMap : mapping
+    density : array
+    density_map : mapping
     sensitivity_dtype : numpy.dtype, optional
         Data type that will be used to build the sensitivity matrix.
     store_sensitivities : str
@@ -89,20 +90,19 @@ class Simulation3DChoclo(LinearSimulation):
         run in serial.
     """
 
-    rho, rhoMap, rhoDeriv = props.Invertible("Density")
+    density, density_map, density_deriv = props.Invertible("Density")
 
     def __init__(
         self,
         mesh,
         survey,
         ind_active=None,
-        rho=None,
-        rhoMap=None,
+        density=None,
+        density_map=None,
         sensitivity_dtype=np.float32,
         store_sensitivities="ram",
         parallel=True,
-        n_processes=None,
-        sensitivity_path=None,
+        **kwargs,
     ):
         if choclo is None:
             raise ImportError("Choclo is not installed")
@@ -112,26 +112,56 @@ class Simulation3DChoclo(LinearSimulation):
         self.store_sensitivities = store_sensitivities
         self.ind_active = ind_active
         # Define physical property and maps
-        self.rho = rho
-        self.rhoMap = rhoMap
+        self.density = density
+        self.density_map = density_map
         # Define jit functions
         self._fill_sensitivity_matrix = jit(nopython=True, parallel=parallel)(
             _fill_sensitivity_matrix
         )
         self._forward_gravity = jit(nopython=True, parallel=parallel)(_forward_gravity)
-        # Support n_process for backward compatibility
-        if n_processes is not None:
+
+        # Catch extra args for backward compatibility
+        if "n_processes" in kwargs:
             raise NotImplementedError(
                 "Choosing number of processes is not implemented in this "
                 "simulation class. You can use `parallel=True` or `parallel=False` "
                 "to enable or disable parallelization."
             )
-        # Support sensitivity_path for backward compatibility
-        if sensitivity_path is not None:
+        if "sensitivity_path" in kwargs:
             raise NotImplementedError(
                 "Storing sensitivites in disk is not yet implemented in this "
                 "simulation class."
             )
+        if (key := "rho") in kwargs:
+            if density is not None:
+                raise ValueError(
+                    f"Can't simultanously pass '{key}' and 'density' arguments to "
+                    "this simulation class. Please, use only 'density'."
+                )
+            warnings.warn(
+                f"The '{key}' argument will be deprecated. "
+                "Please use 'density' instead.",
+                FutureWarning,
+                stacklevel=1,
+            )
+            self.density = kwargs.pop(key)
+        if (key := "rhoMap") in kwargs:
+            if density_map is not None:
+                raise ValueError(
+                    f"Can't simultanously pass '{key}' and 'density_map' arguments to "
+                    "this simulation class. Please, use only 'density_map'."
+                )
+            warnings.warn(
+                f"The '{key}' argument will be deprecated. "
+                "Please use 'density_map' instead.",
+                FutureWarning,
+                stacklevel=1,
+            )
+            self.density_map = kwargs.pop(key)
+        if kwargs:
+            keys = "', ".join(kwargs.keys())
+            s = "s" if len(kwargs.keys()) > 1 else ""
+            raise TypeError(f"Invalid argument{s} '{keys}' passed to this simulation.")
 
     @property
     def store_sensitivities(self):
@@ -221,13 +251,13 @@ class Simulation3DChoclo(LinearSimulation):
         """
         Sensitivity matrix
         """
-        return self.G.dot(self.rhoDeriv)
+        return self.G.dot(self.density_deriv)
 
     def Jvec(self, m, v, f=None):
         """
         Sensitivity times a vector
         """
-        dmu_dm_v = self.rhoDeriv @ v
+        dmu_dm_v = self.density_deriv @ v
         return self.G @ dmu_dm_v.astype(self.sensitivity_dtype, copy=False)
 
     def Jtvec(self, m, v, f=None):
@@ -235,7 +265,7 @@ class Simulation3DChoclo(LinearSimulation):
         Sensitivity transposed times a vector
         """
         Jtvec = self.G.T @ v.astype(self.sensitivity_dtype, copy=False)
-        return np.asarray(self.rhoDeriv.T @ Jtvec)
+        return np.asarray(self.density_deriv.T @ Jtvec)
 
     def getJtJdiag(self, m, W=None, f=None):
         """
@@ -254,7 +284,7 @@ class Simulation3DChoclo(LinearSimulation):
             self._gtg_diagonal = diag
         else:
             diag = self._gtg_diagonal
-        return mkvc((sdiag(np.sqrt(diag)) @ self.rhoDeriv).power(2).sum(axis=0))
+        return mkvc((sdiag(np.sqrt(diag)) @ self.density_deriv).power(2).sum(axis=0))
 
     def _get_cell_nodes(self):
         """
