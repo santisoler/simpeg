@@ -114,7 +114,6 @@ class Simulation3DChoclo(LinearSimulation):
         # Define physical property and maps
         self.rho = rho
         self.rhoMap = rhoMap
-        self.modelMap = self.rhoMap
         # Define jit functions
         self._fill_sensitivity_matrix = jit(nopython=True, parallel=parallel)(
             _fill_sensitivity_matrix
