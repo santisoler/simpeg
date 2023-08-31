@@ -383,9 +383,8 @@ class Simulation3DChoclo(LinearSimulation):
                 fields,
                 active_cell_nodes,
                 kernel_func,
-                conversion_factor,
+                constants.G * conversion_factor,
             )
-        fields *= constants.G
         return fields
 
     def _sensitivity_matrix(self):
@@ -425,9 +424,8 @@ class Simulation3DChoclo(LinearSimulation):
                 sensitivity_matrix,
                 active_cell_nodes,
                 kernel_func,
-                conversion_factor,
+                constants.G * conversion_factor,
             )
-        sensitivity_matrix *= constants.G
         return sensitivity_matrix
 
     def _get_conversion_factor(self, component):
@@ -488,7 +486,7 @@ def _forward_gravity(
     fields,
     cell_nodes,
     kernel_func,
-    conversion_factor,
+    constant_factor,
 ):
     """
     Forward model the gravity field of active cells on receivers
@@ -510,7 +508,7 @@ def _forward_gravity(
         # Compute sensitivity matrix elements from the kernel values
         for k in range(n_cells):
             fields[receiver_index] += (
-                conversion_factor
+                constant_factor
                 * densities[k]
                 * (
                     -kernels[cell_nodes[k, 0]]
@@ -532,7 +530,7 @@ def _fill_sensitivity_matrix(
     sensitivity_matrix,
     cell_nodes,
     kernel_func,
-    conversion_factor,
+    constant_factor,
 ):
     """
     Fill the sensitivity matrix
@@ -560,7 +558,7 @@ def _fill_sensitivity_matrix(
         # Compute sensitivity matrix elements from the kernel values
         for k in range(n_cells):
             sensitivity_matrix[receiver_index, k] = np.float32(
-                conversion_factor
+                constant_factor
                 * (
                     -kernels[cell_nodes[k, 0]]
                     + kernels[cell_nodes[k, 1]]
