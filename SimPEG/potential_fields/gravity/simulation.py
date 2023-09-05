@@ -5,6 +5,7 @@ import scipy.constants as constants
 from geoana.kernels import prism_fz, prism_fzx, prism_fzy, prism_fzz
 from scipy.constants import G as NewtG
 import discretize
+import zarr
 
 from SimPEG import props
 from SimPEG.utils import mkvc, sdiag
@@ -103,6 +104,8 @@ class Simulation3DChoclo(LinearSimulation):
         sensitivity_dtype=np.float32,
         store_sensitivities="ram",
         sensitivity_path=None,
+        n_chunks=100,
+        use_zarr=False,
         parallel=True,
         **kwargs,
     ):
@@ -113,6 +116,8 @@ class Simulation3DChoclo(LinearSimulation):
         self.sensitivity_dtype = sensitivity_dtype
         self.store_sensitivities = store_sensitivities
         self.ind_active = ind_active
+        self.n_chunks = n_chunks
+        self.use_zarr = use_zarr
         # Sanitize sensitivity_path
         if self.store_sensitivities == "disk":
             if sensitivity_path is None:
@@ -257,7 +262,10 @@ class Simulation3DChoclo(LinearSimulation):
         Sensitivity matrix for the given survey and mesh.
         """
         if not hasattr(self, "_G"):
-            self._G = self._sensitivity_matrix()
+            if self.use_zarr:
+                self._G = self._sensitivity_matrix_zarr()
+            else:
+                self._G = self._sensitivity_matrix()
         return self._G
 
     def fields(self, m):
@@ -414,18 +422,55 @@ class Simulation3DChoclo(LinearSimulation):
         else:
             sensitivity_matrix = np.empty(shape, dtype=self.sensitivity_dtype)
         # Start filling the sensitivity matrix
-        for component, receiver_indices in components.items():
+        for component, _ in components.items():
             kernel_func = CHOCLO_KERNELS[component]
             conversion_factor = self._get_conversion_factor(component)
             self._fill_sensitivity_matrix(
                 receivers,
-                receiver_indices,
                 nodes,
                 sensitivity_matrix,
                 active_cell_nodes,
                 kernel_func,
                 constants.G * conversion_factor,
             )
+        return sensitivity_matrix
+
+    def _sensitivity_matrix_zarr(self):
+        """
+        Compute the sensitivity matrix G allocated on disk using Zarr arrays
+        """
+        # Gather observation points
+        receivers, components = self._get_receivers()
+        # Gather nodes
+        nodes = self._get_nodes()
+        # Gather indices of nodes for each active cell in the mesh
+        active_cell_nodes = self._get_cell_nodes()[self.ind_active]
+        # Allocate sensitivity matrix in disk using Zarr
+        shape = (self.survey.nD, self.n_active_cells)
+        sensitivity_matrix = zarr.open(
+            self.sensitivity_path,
+            shape=shape,
+            dtype=self.sensitivity_dtype,
+            order="C",  # it's more efficient to write in row major
+            mode="w",
+            chunks=(self.n_chunks, shape[1]),
+        )
+        # Start filling the sensitivity matrix
+        for component, _ in components.items():
+            kernel_func = CHOCLO_KERNELS[component]
+            conversion_factor = self._get_conversion_factor(component)
+            for i in range(0, shape[0], self.n_chunks):
+                receiver_slice = slice(i, i + self.n_chunks)
+                sens_matrix_chunk = sensitivity_matrix[receiver_slice, :]
+                self._fill_sensitivity_matrix(
+                    receivers[receiver_slice],
+                    nodes,
+                    sens_matrix_chunk,
+                    active_cell_nodes,
+                    kernel_func,
+                    constants.G * conversion_factor,
+                )
+                sensitivity_matrix[receiver_slice, :] = sens_matrix_chunk
         return sensitivity_matrix
 
     def _get_conversion_factor(self, component):
@@ -525,7 +570,6 @@ def _forward_gravity(
 
 def _fill_sensitivity_matrix(
     receivers,
-    receivers_indices,
     nodes,
     sensitivity_matrix,
     cell_nodes,
@@ -541,23 +585,22 @@ def _fill_sensitivity_matrix(
     because it's more efficient than doing it afterwards: it would require to
     index the rows that corresponds to each component.
     """
-    n_receivers = receivers_indices.size
+    n_receivers = receivers.shape[0]
     n_nodes = nodes.shape[0]
     n_cells = cell_nodes.shape[0]
     # Evaluate kernel function on each node, for each receiver location
     for i in prange(n_receivers):
-        receiver_index = receivers_indices[i]
         # Allocate vector for kernels evaluated on mesh nodes
         kernels = np.empty(n_nodes)
         for j in range(n_nodes):
-            dx = nodes[j, 0] - receivers[receiver_index, 0]
-            dy = nodes[j, 1] - receivers[receiver_index, 1]
-            dz = nodes[j, 2] - receivers[receiver_index, 2]
+            dx = nodes[j, 0] - receivers[i, 0]
+            dy = nodes[j, 1] - receivers[i, 1]
+            dz = nodes[j, 2] - receivers[i, 2]
             distance = np.sqrt(dx**2 + dy**2 + dz**2)
             kernels[j] = kernel_func(dx, dy, dz, distance)
         # Compute sensitivity matrix elements from the kernel values
         for k in range(n_cells):
-            sensitivity_matrix[receiver_index, k] = np.float32(
+            sensitivity_matrix[i, k] = np.float32(
                 constant_factor
                 * (
                     -kernels[cell_nodes[k, 0]]
