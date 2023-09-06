@@ -75,7 +75,7 @@ class Simulation3DChoclo(LinearSimulation):
     ind_active : (n_cells) array, optional
         Array that indicates which cells in ``mesh`` are active cells.
     density : array
-    model_map : mapping
+    density_map : mapping
     sensitivity_dtype : numpy.dtype, optional
         Data type that will be used to build the sensitivity matrix.
     store_sensitivities : str
@@ -94,7 +94,7 @@ class Simulation3DChoclo(LinearSimulation):
         run in serial.
     """
 
-    density, model_map, density_deriv = props.Invertible("Density")
+    density, density_map, density_deriv = props.Invertible("Density")
 
     def __init__(
         self,
@@ -102,7 +102,7 @@ class Simulation3DChoclo(LinearSimulation):
         survey,
         ind_active=None,
         density=None,
-        model_map=None,
+        density_map=None,
         sensitivity_dtype=np.float32,
         store_sensitivities="ram",
         sensitivity_path=None,
@@ -136,7 +136,7 @@ class Simulation3DChoclo(LinearSimulation):
         self.sensitivity_path = sensitivity_path
         # Define physical property and maps
         self.density = density
-        self.model_map = model_map
+        self.density_map = density_map
         # Define jit functions
         self._fill_sensitivity_matrix = jit(nopython=True, parallel=parallel)(
             _fill_sensitivity_matrix
@@ -169,18 +169,18 @@ class Simulation3DChoclo(LinearSimulation):
             )
             self.density = kwargs.pop(key)
         if (key := "rhoMap") in kwargs:
-            if model_map is not None:
+            if density_map is not None:
                 raise ValueError(
-                    f"Can't simultanously pass '{key}' and 'model_map' arguments to "
-                    "this simulation class. Please, use only 'model_map'."
+                    f"Can't simultanously pass '{key}' and 'density_map' arguments to "
+                    "this simulation class. Please, use only 'density_map'."
                 )
             warnings.warn(
                 f"The '{key}' argument will be deprecated. "
-                "Please use 'model_map' instead.",
+                "Please use 'density_map' instead.",
                 FutureWarning,
                 stacklevel=1,
             )
-            self.model_map = kwargs.pop(key)
+            self.density_map = kwargs.pop(key)
         if kwargs:
             keys = "', ".join(kwargs.keys())
             s = "s" if len(kwargs.keys()) > 1 else ""
