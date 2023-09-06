@@ -366,8 +366,6 @@ class Simulation3DChoclo(LinearSimulation):
         (nD,) array
             Always return a ``np.float64`` array.
         """
-        # Gather observation points
-        receivers, components = self._get_receivers()
         # Gather nodes
         nodes = self._get_nodes()
         # Gather indices of nodes for each active cell in the mesh
@@ -375,19 +373,26 @@ class Simulation3DChoclo(LinearSimulation):
         # Allocate fields array
         fields = np.zeros(self.survey.nD, dtype=np.float64)
         # Start filling the sensitivity matrix
-        for component, receiver_indices in components.items():
-            kernel_func = CHOCLO_KERNELS[component]
-            conversion_factor = self._get_conversion_factor(component)
-            self._forward_gravity(
-                receivers,
-                receiver_indices,
-                nodes,
-                densities,
-                fields,
-                active_cell_nodes,
-                kernel_func,
-                constants.G * conversion_factor,
-            )
+        index_offset = 0
+        for components, receivers in self._get_components_and_receivers():
+            n_components = len(components)
+            n_elements = n_components * receivers.shape[0]
+            for i, component in enumerate(components):
+                kernel_func = CHOCLO_KERNELS[component]
+                conversion_factor = self._get_conversion_factor(component)
+                vector_slice = slice(
+                    index_offset + i, index_offset + n_elements, n_components
+                )
+                self._forward_gravity(
+                    receivers,
+                    nodes,
+                    densities,
+                    fields[vector_slice],
+                    active_cell_nodes,
+                    kernel_func,
+                    constants.G * conversion_factor,
+                )
+            index_offset += n_elements
         return fields
 
     def _sensitivity_matrix(self):
@@ -398,8 +403,6 @@ class Simulation3DChoclo(LinearSimulation):
         -------
         (nD, n_active_cells) array
         """
-        # Gather observation points
-        receivers, components = self._get_receivers()
         # Gather nodes
         nodes = self._get_nodes()
         # Gather indices of nodes for each active cell in the mesh
@@ -417,19 +420,31 @@ class Simulation3DChoclo(LinearSimulation):
         else:
             sensitivity_matrix = np.empty(shape, dtype=self.sensitivity_dtype)
         # Start filling the sensitivity matrix
-        for component, receiver_indices in components.items():
-            kernel_func = CHOCLO_KERNELS[component]
-            conversion_factor = self._get_conversion_factor(component)
-            self._fill_sensitivity_matrix(
-                receivers,
-                receiver_indices,
-                nodes,
-                sensitivity_matrix,
-                active_cell_nodes,
-                kernel_func,
-                constants.G * conversion_factor,
-            )
+        index_offset = 0
+        for components, receivers in self._get_components_and_receivers():
+            n_components = len(components)
+            n_rows = n_components * receivers.shape[0]
+            for i, component in enumerate(components):
+                kernel_func = CHOCLO_KERNELS[component]
+                conversion_factor = self._get_conversion_factor(component)
+                matrix_slice = slice(
+                    index_offset + i, index_offset + n_rows, n_components
+                )
+                self._fill_sensitivity_matrix(
+                    receivers,
+                    nodes,
+                    sensitivity_matrix[matrix_slice, :],
+                    active_cell_nodes,
+                    kernel_func,
+                    constants.G * conversion_factor,
+                )
+            index_offset += n_rows
         return sensitivity_matrix
+
+    def _get_components_and_receivers(self):
+        """Generator for receiver locations and their field components."""
+        for receiver_object in self.survey.source_field.receiver_list:
+            yield receiver_object.components, receiver_object.locations
 
     def _get_conversion_factor(self, component):
         """
@@ -453,37 +468,9 @@ class Simulation3DChoclo(LinearSimulation):
             raise TypeError(f"Invalid mesh of type {self.mesh.__class__.__name__}.")
         return nodes
 
-    def _get_receivers(self):
-        """Gather receivers in the survey and their corresponding components"""
-        # Get receivers locations
-        receivers = np.vstack(
-            [
-                loc
-                for r in self.survey.source_field.receiver_list
-                for loc in r.locations
-                for _ in r.components
-            ]
-        )
-        # Get field components and indices of receivers for each component
-        components_per_receiver = [
-            comp
-            for r in self.survey.source_field.receiver_list
-            for _ in r.locations
-            for comp in r.components
-        ]
-        components = {}
-        for i, c in enumerate(components_per_receiver):
-            if c not in components:
-                components[c] = []
-            components[c].append(i)
-        for key, value in components.items():
-            components[key] = np.array(value)
-        return receivers, components
-
 
 def _forward_gravity(
     receivers,
-    receivers_indices,
     nodes,
     densities,
     fields,
@@ -494,23 +481,22 @@ def _forward_gravity(
     """
     Forward model the gravity field of active cells on receivers
     """
-    n_receivers = receivers_indices.size
+    n_receivers = receivers.shape[0]
     n_nodes = nodes.shape[0]
     n_cells = cell_nodes.shape[0]
     # Evaluate kernel function on each node, for each receiver location
     for i in prange(n_receivers):
-        receiver_index = receivers_indices[i]
         # Allocate vector for kernels evaluated on mesh nodes
         kernels = np.empty(n_nodes)
         for j in range(n_nodes):
-            dx = nodes[j, 0] - receivers[receiver_index, 0]
-            dy = nodes[j, 1] - receivers[receiver_index, 1]
-            dz = nodes[j, 2] - receivers[receiver_index, 2]
+            dx = nodes[j, 0] - receivers[i, 0]
+            dy = nodes[j, 1] - receivers[i, 1]
+            dz = nodes[j, 2] - receivers[i, 2]
             distance = np.sqrt(dx**2 + dy**2 + dz**2)
             kernels[j] = kernel_func(dx, dy, dz, distance)
         # Compute sensitivity matrix elements from the kernel values
         for k in range(n_cells):
-            fields[receiver_index] += (
+            fields[i] += (
                 constant_factor
                 * densities[k]
                 * (
@@ -528,7 +514,6 @@ def _forward_gravity(
 
 def _fill_sensitivity_matrix(
     receivers,
-    receivers_indices,
     nodes,
     sensitivity_matrix,
     cell_nodes,
@@ -538,29 +523,47 @@ def _fill_sensitivity_matrix(
     """
     Fill the sensitivity matrix
 
+    Parameters
+    ----------
+    receivers : (n_receivers, 3) array
+        Array with the locations of the receivers
+    nodes : (n_active_nodes, 3) array
+        Array with the location of the mesh nodes.
+    sensitivity_matrix : (n_receivers, n_active_nodes) array
+        Empty 2d array where the sensitivity matrix elements will be filled.
+        This could be a preallocated empty array or a slice of it.
+    cell_nodes : (n_cells, 8) array
+        Array of integers, where each row contains the indices of the nodes for
+        each active cell in the mesh.
+    kernel_func : callable
+        Kernel function that will be evaluated on each node of the mesh. Choose
+        one of the kernel functions in ``choclo.prism``.
+    constant_factor : float
+        Constant factor that will be used to multiply each element of the
+        sensitivity matrix.
+
     Notes
     -----
     The conversion factor is applied here to each row of the sensitivity matrix
     because it's more efficient than doing it afterwards: it would require to
     index the rows that corresponds to each component.
     """
-    n_receivers = receivers_indices.size
+    n_receivers = receivers.shape[0]
     n_nodes = nodes.shape[0]
     n_cells = cell_nodes.shape[0]
     # Evaluate kernel function on each node, for each receiver location
     for i in prange(n_receivers):
-        receiver_index = receivers_indices[i]
         # Allocate vector for kernels evaluated on mesh nodes
         kernels = np.empty(n_nodes)
         for j in range(n_nodes):
-            dx = nodes[j, 0] - receivers[receiver_index, 0]
-            dy = nodes[j, 1] - receivers[receiver_index, 1]
-            dz = nodes[j, 2] - receivers[receiver_index, 2]
+            dx = nodes[j, 0] - receivers[i, 0]
+            dy = nodes[j, 1] - receivers[i, 1]
+            dz = nodes[j, 2] - receivers[i, 2]
             distance = np.sqrt(dx**2 + dy**2 + dz**2)
             kernels[j] = kernel_func(dx, dy, dz, distance)
         # Compute sensitivity matrix elements from the kernel values
         for k in range(n_cells):
-            sensitivity_matrix[receiver_index, k] = np.float32(
+            sensitivity_matrix[i, k] = np.float32(
                 constant_factor
                 * (
                     -kernels[cell_nodes[k, 0]]
