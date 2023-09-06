@@ -111,8 +111,7 @@ class Simulation3DChoclo(LinearSimulation):
     ):
         if choclo is None:
             raise ImportError("Choclo is not installed")
-        super().__init__(mesh=mesh)
-        self.survey = survey
+        super().__init__(mesh=mesh, survey=survey)
         self.sensitivity_dtype = sensitivity_dtype
         self.store_sensitivities = store_sensitivities
         self.ind_active = ind_active
