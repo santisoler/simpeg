@@ -75,7 +75,7 @@ class Simulation3DChoclo(LinearSimulation):
     ind_active : (n_cells) array, optional
         Array that indicates which cells in ``mesh`` are active cells.
     density : array
-    density_map : mapping
+    model_map : mapping
     sensitivity_dtype : numpy.dtype, optional
         Data type that will be used to build the sensitivity matrix.
     store_sensitivities : str
@@ -86,6 +86,9 @@ class Simulation3DChoclo(LinearSimulation):
         - 'forward_only': you intend only do perform a forward simulation and
           sensitivities do not need to be stored
 
+    sensitivity_path : str, pathlib.Path or None
+        Path to store the sensitivity matrix if ``store_sensitivities`` is set
+        to ``"disk"``.
     parallel : bool, optional
         If True, the simulation will run in parallel. If False, it will
         run in serial.
