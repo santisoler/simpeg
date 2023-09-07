@@ -365,12 +365,10 @@ class Simulation3DChoclo(LinearSimulation):
         (nD,) array
             Always return a ``np.float64`` array.
         """
-        # Gather nodes
-        nodes = self._get_nodes()
-        # Gather indices of nodes for each active cell in the mesh
-        active_cell_nodes = self._get_cell_nodes()[self.ind_active]
+        # Gather active nodes and the indices of the nodes for each active cell
+        active_nodes, active_cell_nodes = self._get_active_nodes()
         # Allocate fields array
-        fields = np.zeros(self.survey.nD, dtype=np.float64)
+        fields = np.zeros(self.survey.nD, dtype=np.float32)
         # Start filling the sensitivity matrix
         index_offset = 0
         for components, receivers in self._get_components_and_receivers():
@@ -384,7 +382,7 @@ class Simulation3DChoclo(LinearSimulation):
                 )
                 self._forward_gravity(
                     receivers,
-                    nodes,
+                    active_nodes,
                     densities,
                     fields[vector_slice],
                     active_cell_nodes,
@@ -402,10 +400,8 @@ class Simulation3DChoclo(LinearSimulation):
         -------
         (nD, n_active_cells) array
         """
-        # Gather nodes
-        nodes = self._get_nodes()
-        # Gather indices of nodes for each active cell in the mesh
-        active_cell_nodes = self._get_cell_nodes()[self.ind_active]
+        # Gather active nodes and the indices of the nodes for each active cell
+        active_nodes, active_cell_nodes = self._get_active_nodes()
         # Allocate sensitivity matrix
         shape = (self.survey.nD, self.n_active_cells)
         if self.store_sensitivities == "disk":
@@ -431,7 +427,7 @@ class Simulation3DChoclo(LinearSimulation):
                 )
                 self._fill_sensitivity_matrix(
                     receivers,
-                    nodes,
+                    active_nodes,
                     sensitivity_matrix[matrix_slice, :],
                     active_cell_nodes,
                     kernel_func,
@@ -439,6 +435,36 @@ class Simulation3DChoclo(LinearSimulation):
                 )
             index_offset += n_rows
         return sensitivity_matrix
+
+    def _get_active_nodes(self):
+        """
+        Return locations of nodes only for active cells
+
+        Also return an array containing the indices of the "active nodes" for
+        each active cell in the mesh
+        """
+        # Get all nodes in the mesh
+        if isinstance(self.mesh, discretize.TreeMesh):
+            nodes = self.mesh.total_nodes
+        elif isinstance(self.mesh, discretize.TensorMesh):
+            nodes = self.mesh.nodes
+        else:
+            raise TypeError(f"Invalid mesh of type {self.mesh.__class__.__name__}.")
+        # Get original cell_nodes but only for active cells
+        cell_nodes = self._get_cell_nodes()
+        # If all cells in the mesh are active, return nodes and cell_nodes
+        if self.n_active_cells == self.mesh.n_cells:
+            return nodes, cell_nodes
+        # Keep only the cell_nodes for active cells
+        cell_nodes = cell_nodes[self.ind_active]
+        # Get the unique indices of the nodes that belong to every active cell
+        # (these indices correspond to the original `nodes` array)
+        unique_nodes, active_cell_nodes = np.unique(cell_nodes, return_inverse=True)
+        # Select only the nodes that belong to the active cells (active nodes)
+        active_nodes = nodes[unique_nodes]
+        # Reshape indices of active cells for each active cell in the mesh
+        active_cell_nodes = active_cell_nodes.reshape(cell_nodes.shape)
+        return active_nodes, active_cell_nodes
 
     def _get_components_and_receivers(self):
         """Generator for receiver locations and their field components."""
@@ -456,16 +482,6 @@ class Simulation3DChoclo(LinearSimulation):
         else:
             raise ValueError(f"Invalid component '{component}'.")
         return conversion_factor
-
-    def _get_nodes(self):
-        """Gather nodes from mesh"""
-        if isinstance(self.mesh, discretize.TreeMesh):
-            nodes = self.mesh.total_nodes
-        elif isinstance(self.mesh, discretize.TensorMesh):
-            nodes = self.mesh.nodes
-        else:
-            raise TypeError(f"Invalid mesh of type {self.mesh.__class__.__name__}.")
-        return nodes
 
 
 def _forward_gravity(
