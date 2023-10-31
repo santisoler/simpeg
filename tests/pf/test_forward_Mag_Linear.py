@@ -1,76 +1,97 @@
-import unittest
 import discretize
-from SimPEG import utils, maps
-from SimPEG.potential_fields import magnetics as mag
+import numpy as np
+import pytest
 from geoana.em.static import MagneticPrism
 from scipy.constants import mu_0
-import numpy as np
+
+from SimPEG import maps, utils
+from SimPEG.potential_fields import magnetics as mag
 
 
-def test_ana_mag_forward():
-    nx = 5
-    ny = 5
-
-    H0 = (50000.0, 60.0, 250.0)
-    b0 = mag.analytics.IDTtoxyz(-H0[1], H0[2], H0[0])
-    chi1 = 0.01
-    chi2 = 0.02
-
+@pytest.fixture
+def mag_mesh() -> discretize.TensorMesh:
     # Define a mesh
     cs = 0.2
     hxind = [(cs, 41)]
     hyind = [(cs, 41)]
     hzind = [(cs, 41)]
     mesh = discretize.TensorMesh([hxind, hyind, hzind], "CCC")
+    return mesh
 
-    # create a model of two blocks, 1 inside the other
+
+@pytest.fixture
+def two_blocks() -> tuple[np.ndarray, np.ndarray]:
     block1 = np.array([[-1.5, 1.5], [-1.5, 1.5], [-1.5, 1.5]])
     block2 = np.array([[-0.7, 0.7], [-0.7, 0.7], [-0.7, 0.7]])
+    return block1, block2
 
-    def get_block_inds(grid, block):
-        return np.where(
-            (grid[:, 0] > block[0, 0])
-            & (grid[:, 0] < block[0, 1])
-            & (grid[:, 1] > block[1, 0])
-            & (grid[:, 1] < block[1, 1])
-            & (grid[:, 2] > block[2, 0])
-            & (grid[:, 2] < block[2, 1])
-        )
 
-    block1_inds = get_block_inds(mesh.cell_centers, block1)
-    block2_inds = get_block_inds(mesh.cell_centers, block2)
+def get_block_inds(grid, block) -> np.ndarray:
+    return np.where(
+        (grid[:, 0] > block[0, 0])
+        & (grid[:, 0] < block[0, 1])
+        & (grid[:, 1] > block[1, 0])
+        & (grid[:, 1] < block[1, 1])
+        & (grid[:, 2] > block[2, 0])
+        & (grid[:, 2] < block[2, 1])
+    )
 
+
+def create_block_model(mesh, blocks, block_params) -> np.ndarray:
     model = np.zeros(mesh.n_cells)
-    model[block1_inds] = chi1
-    model[block2_inds] = chi2
+    for block, params in zip(blocks, block_params):
+        block_ind = get_block_inds(mesh.cell_centers, block)
+        model[block_ind] = params
+    return model
 
-    active_cells = model != 0.0
-    model_reduced = model[active_cells]
 
-    # Create reduced identity map for Linear Pproblem
-    idenMap = maps.IdentityMap(nP=int(sum(active_cells)))
-
+@pytest.fixture
+def receiver_locations() -> np.ndarray:
     # Create plane of observations
+    nx, ny = 5, 5
     xr = np.linspace(-20, 20, nx)
     yr = np.linspace(-20, 20, ny)
     X, Y = np.meshgrid(xr, yr)
     Z = np.ones_like(X) * 3.0
-    locXyz = np.c_[X.reshape(-1), Y.reshape(-1), Z.reshape(-1)]
+    return np.c_[X.reshape(-1), Y.reshape(-1), Z.reshape(-1)]
+
+
+@pytest.fixture
+def inducing_field():
+    H0 = (50000.0, 60.0, 250.0)
+    b0 = mag.analytics.IDTtoxyz(-H0[1], H0[2], H0[0])
+    return H0, b0
+
+
+@pytest.mark.parametrize("engine", ("geoana", "choclo"))
+def test_ana_mag_forward(
+    engine, mag_mesh, two_blocks, receiver_locations, inducing_field
+):
+    H0, b0 = inducing_field
+    mesh = mag_mesh
+    block1, block2 = two_blocks
+
+    chi1 = 0.01
+    chi2 = 0.02
+    model = create_block_model(mag_mesh, two_blocks, [chi1, chi2])
+    active_cells = model != 0.0
+    model_reduced = model[active_cells]
+
+    # Create reduced identity map for Linear Problem
+    identity_map = maps.IdentityMap(nP=int(sum(active_cells)))
+
     components = ["bx", "by", "bz", "tmi"]
-
-    rxLoc = mag.Point(locXyz, components=components)
-    srcField = mag.SourceField([rxLoc], parameters=H0)
-    survey = mag.Survey(srcField)
-
-    # Creat reduced identity map for Linear Pproblem
-    idenMap = maps.IdentityMap(nP=int(sum(active_cells)))
+    receivers = mag.Point(receiver_locations, components=components)
+    source_field = mag.SourceField([receivers], parameters=H0)
+    survey = mag.Survey(source_field)
 
     sim = mag.Simulation3DIntegral(
         mesh,
         survey=survey,
-        chiMap=idenMap,
+        chiMap=identity_map,
         ind_active=active_cells,
         store_sensitivities="forward_only",
+        engine=engine,
         n_processes=None,
     )
 
@@ -90,9 +111,9 @@ def test_ana_mag_forward():
     prism_3 = MagneticPrism(block2[:, 0], block2[:, 1], chi2 * b0 / mu_0)
 
     d = (
-        prism_1.magnetic_flux_density(locXyz)
-        + prism_2.magnetic_flux_density(locXyz)
-        + prism_3.magnetic_flux_density(locXyz)
+        prism_1.magnetic_flux_density(receiver_locations)
+        + prism_2.magnetic_flux_density(receiver_locations)
+        + prism_3.magnetic_flux_density(receiver_locations)
     )
 
     np.testing.assert_allclose(d_x, d[:, 0])
@@ -101,7 +122,7 @@ def test_ana_mag_forward():
     np.testing.assert_allclose(d_t, d @ tmi)
 
 
-def test_ana_mag_grad_forward():
+def test_ana_mag_grad_forward(mag_mesh):
     nx = 5
     ny = 5
 
@@ -111,11 +132,7 @@ def test_ana_mag_grad_forward():
     chi2 = 0.02
 
     # Define a mesh
-    cs = 0.2
-    hxind = [(cs, 41)]
-    hyind = [(cs, 41)]
-    hzind = [(cs, 41)]
-    mesh = discretize.TensorMesh([hxind, hyind, hzind], "CCC")
+    mesh = mag_mesh
 
     # create a model of two blocks, 1 inside the other
     block1 = np.array([[-1.5, 1.5], [-1.5, 1.5], [-1.5, 1.5]])
@@ -363,7 +380,3 @@ def test_ana_mag_amp_forward():
     d_amp = np.linalg.norm(d, axis=1)
 
     np.testing.assert_allclose(data, d_amp)
-
-
-if __name__ == "__main__":
-    unittest.main()
