@@ -34,7 +34,6 @@ def two_blocks() -> tuple[np.ndarray, np.ndarray]:
     return block1, block2
 
 
-
 @pytest.fixture
 def receiver_locations() -> np.ndarray:
     """
@@ -60,13 +59,14 @@ def inducing_field() -> tuple[tuple[float, float, float], tuple[float, float, fl
     b0 = mag.analytics.IDTtoxyz(-H0[1], H0[2], H0[0])
     return H0, b0
 
+
 def get_block_inds(grid: np.ndarray, block: np.ndarray) -> np.ndarray:
     """
     get the indices for a block
 
     :param grid: (n, 3) array of xyz locations
     :param block: (3, 2) array of (xmin, xmax), (ymin, ymax), (zmin, zmax) dimensions of the block
-    :return boolean array of 
+    :return boolean array of
     """
     return np.where(
         (grid[:, 0] > block[0, 0])
@@ -78,8 +78,11 @@ def get_block_inds(grid: np.ndarray, block: np.ndarray) -> np.ndarray:
     )
 
 
-def create_block_model(mesh: discretize.TensorMesh, blocks: tuple[np.ndarray, ...],
-                        block_params: tuple[np.ndarray, ...]) -> tuple[np.ndarray, np.ndarray]:
+def create_block_model(
+    mesh: discretize.TensorMesh,
+    blocks: tuple[np.ndarray, ...],
+    block_params: tuple[np.ndarray, ...],
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Create a magnetic model from a sequence of blocks
 
@@ -90,7 +93,9 @@ def create_block_model(mesh: discretize.TensorMesh, blocks: tuple[np.ndarray, ..
     :return: tuple of the magnetic model and active_cells (a boolean array)
     """
     if len(blocks) != len(block_params):
-        raise ValueError("'blocks' and 'block_params' must have the same number of elements")
+        raise ValueError(
+            "'blocks' and 'block_params' must have the same number of elements"
+        )
     model = np.zeros((mesh.n_cells, np.atleast_1d(block_params[0]).shape[0]))
     for block, params in zip(blocks, block_params):
         block_ind = get_block_inds(mesh.cell_centers, block)
@@ -98,7 +103,12 @@ def create_block_model(mesh: discretize.TensorMesh, blocks: tuple[np.ndarray, ..
     active_cells = np.any(np.abs(model) > 0, axis=1)
     return model.squeeze(), active_cells
 
-def create_mag_survey(components: list[str], receiver_locations: np.ndarray, inducing_field_params: tuple[float, float, float]) -> mag.Survey:
+
+def create_mag_survey(
+    components: list[str],
+    receiver_locations: np.ndarray,
+    inducing_field_params: tuple[float, float, float],
+) -> mag.Survey:
     """
     create a magnetic Survey
 
@@ -125,8 +135,11 @@ def test_ana_mag_forward(
     # Create reduced identity map for Linear Problem
     identity_map = maps.IdentityMap(nP=int(sum(active_cells)))
 
-    survey = create_mag_survey(components = ["bx", "by", "bz", "tmi"], receiver_locations=receiver_locations, 
-                               inducing_field_params=inducing_field_params)
+    survey = create_mag_survey(
+        components=["bx", "by", "bz", "tmi"],
+        receiver_locations=receiver_locations,
+        inducing_field_params=inducing_field_params,
+    )
     sim = mag.Simulation3DIntegral(
         mag_mesh,
         survey=survey,
@@ -164,9 +177,12 @@ def test_ana_mag_forward(
     np.testing.assert_allclose(d_z, d[:, 2])
     np.testing.assert_allclose(d_t, d @ tmi)
 
+
 @pytest.mark.parametrize("engine", ("geoana", "choclo"))
-def test_ana_mag_grad_forward(engine, mag_mesh, two_blocks, receiver_locations, inducing_field):
-    inducing_field_params, b0 = inducing_field    
+def test_ana_mag_grad_forward(
+    engine, mag_mesh, two_blocks, receiver_locations, inducing_field
+):
+    inducing_field_params, b0 = inducing_field
 
     chi1 = 0.01
     chi2 = 0.02
@@ -175,8 +191,11 @@ def test_ana_mag_grad_forward(engine, mag_mesh, two_blocks, receiver_locations, 
     # Create reduced identity map for Linear Problem
     identity_map = maps.IdentityMap(nP=int(sum(active_cells)))
 
-    survey = create_mag_survey(components = ["bxx", "bxy", "bxz", "byy", "byz", "bzz"], receiver_locations=receiver_locations, 
-                               inducing_field_params=inducing_field_params)
+    survey = create_mag_survey(
+        components=["bxx", "bxy", "bxz", "byy", "byz", "bzz"],
+        receiver_locations=receiver_locations,
+        inducing_field_params=inducing_field_params,
+    )
     sim = mag.Simulation3DIntegral(
         mag_mesh,
         survey=survey,
@@ -186,7 +205,6 @@ def test_ana_mag_grad_forward(engine, mag_mesh, two_blocks, receiver_locations, 
         # engine=engine,
         n_processes=None,
     )
-
 
     data = sim.dpred(model_reduced)
     d_xx = data[0::6]
@@ -215,20 +233,25 @@ def test_ana_mag_grad_forward(engine, mag_mesh, two_blocks, receiver_locations, 
     np.testing.assert_allclose(d_yz, d[..., 1, 2], rtol=1e-10, atol=1e-12)
     np.testing.assert_allclose(d_zz, d[..., 2, 2], rtol=1e-10, atol=1e-12)
 
+
 @pytest.mark.parametrize("engine", ("geoana", "choclo"))
-def test_ana_mag_vec_forward(engine, mag_mesh, two_blocks, receiver_locations, inducing_field):
-    inducing_field_params, b0 = inducing_field    
+def test_ana_mag_vec_forward(
+    engine, mag_mesh, two_blocks, receiver_locations, inducing_field
+):
+    inducing_field_params, b0 = inducing_field
     M1 = (utils.mat_utils.dip_azimuth2cartesian(45, -40) * 0.05).squeeze()
     M2 = (utils.mat_utils.dip_azimuth2cartesian(120, 32) * 0.1).squeeze()
-
 
     model, active_cells = create_block_model(mag_mesh, two_blocks, [M1, M2])
     model_reduced = model[active_cells].reshape(-1, order="F")
     # Create reduced identity map for Linear Problem
-    identity_map = maps.IdentityMap(nP=int(sum(active_cells))*3)
+    identity_map = maps.IdentityMap(nP=int(sum(active_cells)) * 3)
 
-    survey = create_mag_survey(components = ["bx", "by", "bz", "tmi"], receiver_locations=receiver_locations, 
-                               inducing_field_params=inducing_field_params)
+    survey = create_mag_survey(
+        components=["bx", "by", "bz", "tmi"],
+        receiver_locations=receiver_locations,
+        inducing_field_params=inducing_field_params,
+    )
 
     sim = mag.Simulation3DIntegral(
         mag_mesh,
@@ -261,20 +284,25 @@ def test_ana_mag_vec_forward(engine, mag_mesh, two_blocks, receiver_locations, i
     np.testing.assert_allclose(data[:, 2], d[:, 2])
     np.testing.assert_allclose(data[:, 3], d @ tmi)
 
+
 @pytest.mark.parametrize("engine", ("geoana", "choclo"))
-def test_ana_mag_amp_forward(engine, mag_mesh, two_blocks, receiver_locations, inducing_field):
-    inducing_field_params, b0 = inducing_field    
+def test_ana_mag_amp_forward(
+    engine, mag_mesh, two_blocks, receiver_locations, inducing_field
+):
+    inducing_field_params, b0 = inducing_field
     M1 = (utils.mat_utils.dip_azimuth2cartesian(45, -40) * 0.05).squeeze()
     M2 = (utils.mat_utils.dip_azimuth2cartesian(120, 32) * 0.1).squeeze()
-
 
     model, active_cells = create_block_model(mag_mesh, two_blocks, [M1, M2])
     model_reduced = model[active_cells].reshape(-1, order="F")
     # Create reduced identity map for Linear Problem
-    identity_map = maps.IdentityMap(nP=int(sum(active_cells))*3)
+    identity_map = maps.IdentityMap(nP=int(sum(active_cells)) * 3)
 
-    survey = create_mag_survey(components = ["bx", "by", "bz"], receiver_locations=receiver_locations, 
-                               inducing_field_params=inducing_field_params)
+    survey = create_mag_survey(
+        components=["bx", "by", "bz"],
+        receiver_locations=receiver_locations,
+        inducing_field_params=inducing_field_params,
+    )
 
     sim = mag.Simulation3DIntegral(
         mag_mesh,
