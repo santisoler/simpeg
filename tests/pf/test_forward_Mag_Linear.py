@@ -78,7 +78,8 @@ def get_block_inds(grid: np.ndarray, block: np.ndarray) -> np.ndarray:
     )
 
 
-def create_block_model(mesh: discretize.TensorMesh, blocks: tuple[np.ndarray, ...], block_params: tuple[np.ndarray, ...]) -> tuple[np.ndarray, np.ndarray]:
+def create_block_model(mesh: discretize.TensorMesh, blocks: tuple[np.ndarray, ...],
+                        block_params: tuple[np.ndarray, ...]) -> tuple[np.ndarray, np.ndarray]:
     """
     Create a magnetic model from a sequence of blocks
 
