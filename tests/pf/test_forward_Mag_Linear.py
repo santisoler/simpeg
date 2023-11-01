@@ -122,9 +122,18 @@ def create_mag_survey(
     return mag.Survey(source_field)
 
 
-@pytest.mark.parametrize("engine", ("geoana", "choclo"))
+@pytest.mark.parametrize(
+    "engine, parallel_kwargs",
+    [
+        ("geoana", {"n_processes": None}),
+        ("geoana", {"n_processes": 1}),
+        ("choclo", {"choclo_parallel": False}),
+        ("choclo", {"choclo_parallel": True}),
+    ],
+    ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
+)
 def test_ana_mag_forward(
-    engine, mag_mesh, two_blocks, receiver_locations, inducing_field
+    engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
 ):
     inducing_field_params, b0 = inducing_field
 
@@ -147,7 +156,7 @@ def test_ana_mag_forward(
         ind_active=active_cells,
         store_sensitivities="forward_only",
         engine=engine,
-        n_processes=None,
+        **parallel_kwargs
     )
 
     data = sim.dpred(model_reduced)
@@ -178,9 +187,19 @@ def test_ana_mag_forward(
     np.testing.assert_allclose(d_t, d @ tmi)
 
 
-@pytest.mark.parametrize("engine", ("geoana", "choclo"))
+@pytest.mark.parametrize(
+    "engine, parallel_kwargs",
+    [
+        ("geoana", {"n_processes": None}),
+        ("geoana", {"n_processes": 1}),
+        ("choclo", {"choclo_parallel": False}),
+        ("choclo", {"choclo_parallel": True}),
+    ],
+    ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
+)
+@pytest.mark.parametrize("store_sensitivities", ("ram", "disk", "forward_only"))
 def test_ana_mag_grad_forward(
-    engine, mag_mesh, two_blocks, receiver_locations, inducing_field
+    engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
 ):
     inducing_field_params, b0 = inducing_field
 
@@ -203,7 +222,7 @@ def test_ana_mag_grad_forward(
         ind_active=active_cells,
         store_sensitivities="forward_only",
         engine=engine,
-        n_processes=None,
+        **parallel_kwargs
     )
 
     data = sim.dpred(model_reduced)
@@ -234,9 +253,18 @@ def test_ana_mag_grad_forward(
     np.testing.assert_allclose(d_zz, d[..., 2, 2], rtol=1e-10, atol=1e-12)
 
 
-@pytest.mark.parametrize("engine", ("geoana", "choclo"))
+@pytest.mark.parametrize(
+    "engine, parallel_kwargs",
+    [
+        ("geoana", {"n_processes": None}),
+        ("geoana", {"n_processes": 1}),
+        ("choclo", {"choclo_parallel": False}),
+        ("choclo", {"choclo_parallel": True}),
+    ],
+    ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
+)
 def test_ana_mag_vec_forward(
-    engine, mag_mesh, two_blocks, receiver_locations, inducing_field
+    engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
 ):
     inducing_field_params, b0 = inducing_field
     M1 = (utils.mat_utils.dip_azimuth2cartesian(45, -40) * 0.05).squeeze()
@@ -261,7 +289,7 @@ def test_ana_mag_vec_forward(
         store_sensitivities="forward_only",
         model_type="vector",
         engine=engine,
-        n_processes=None,
+        **parallel_kwargs
     )
 
     data = sim.dpred(model_reduced).reshape(-1, 4)
@@ -285,9 +313,18 @@ def test_ana_mag_vec_forward(
     np.testing.assert_allclose(data[:, 3], d @ tmi)
 
 
-@pytest.mark.parametrize("engine", ("geoana", "choclo"))
+@pytest.mark.parametrize(
+    "engine, parallel_kwargs",
+    [
+        ("geoana", {"n_processes": None}),
+        ("geoana", {"n_processes": 1}),
+        ("choclo", {"choclo_parallel": False}),
+        ("choclo", {"choclo_parallel": True}),
+    ],
+    ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
+)
 def test_ana_mag_amp_forward(
-    engine, mag_mesh, two_blocks, receiver_locations, inducing_field
+    engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
 ):
     inducing_field_params, b0 = inducing_field
     M1 = (utils.mat_utils.dip_azimuth2cartesian(45, -40) * 0.05).squeeze()
@@ -312,8 +349,8 @@ def test_ana_mag_amp_forward(
         store_sensitivities="forward_only",
         model_type="vector",
         is_amplitude_data=True,
-        engine=None,
-        n_processes=None,
+        engine=engine,
+        **parallel_kwargs
     )
 
     data = sim.dpred(model_reduced)
