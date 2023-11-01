@@ -146,7 +146,7 @@ def test_ana_mag_forward(
         chiMap=identity_map,
         ind_active=active_cells,
         store_sensitivities="forward_only",
-        # engine=engine,
+        engine=engine,
         n_processes=None,
     )
 
@@ -202,7 +202,7 @@ def test_ana_mag_grad_forward(
         chiMap=identity_map,
         ind_active=active_cells,
         store_sensitivities="forward_only",
-        # engine=engine,
+        engine=engine,
         n_processes=None,
     )
 
@@ -260,7 +260,7 @@ def test_ana_mag_vec_forward(
         ind_active=active_cells,
         store_sensitivities="forward_only",
         model_type="vector",
-        # engine=engine,
+        engine=engine,
         n_processes=None,
     )
 
@@ -311,19 +311,8 @@ def test_ana_mag_amp_forward(
         ind_active=active_cells,
         store_sensitivities="forward_only",
         model_type="vector",
-        # engine=engine,
-        n_processes=None,
-    )
-
-    sim = mag.Simulation3DIntegral(
-        mag_mesh,
-        survey=survey,
-        chiMap=identity_map,
-        ind_active=active_cells,
-        store_sensitivities="forward_only",
-        model_type="vector",
         is_amplitude_data=True,
-        # engine = None,
+        engine=None,
         n_processes=None,
     )
 
