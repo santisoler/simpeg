@@ -123,7 +123,7 @@ def create_mag_survey(
 
 
 @pytest.mark.parametrize(
-    "engine, parallel_kwargs",
+    "engine,parallel_kwargs",
     [
         ("geoana", {"n_processes": None}),
         ("geoana", {"n_processes": 1}),
@@ -197,7 +197,6 @@ def test_ana_mag_forward(
     ],
     ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
 )
-@pytest.mark.parametrize("store_sensitivities", ("ram", "disk", "forward_only"))
 def test_ana_mag_grad_forward(
     engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
 ):
