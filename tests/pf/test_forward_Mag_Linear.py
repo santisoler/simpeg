@@ -11,7 +11,12 @@ from SimPEG.potential_fields import magnetics as mag
 @pytest.fixture
 def mag_mesh() -> discretize.TensorMesh:
     """
-    :return: TensorMesh for testing
+    a small tensor mesh for testing magnetic simulations
+
+    Returns
+    -------
+    discretize.TensorMesh
+        the tensor mesh for testing
     """
     # Define a mesh
     cs = 0.2
@@ -25,9 +30,12 @@ def mag_mesh() -> discretize.TensorMesh:
 @pytest.fixture
 def two_blocks() -> tuple[np.ndarray, np.ndarray]:
     """
-    dimensions of two blocks
+    The parameters defining two blocks
 
-    :return: tuple of (3, 2) arrays of (xmin, xmax), (ymin, ymax), (zmin, zmax) dimensions of each block
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        tuple of (3, 2) arrays of (xmin, xmax), (ymin, ymax), (zmin, zmax) dimensions of each block
     """
     block1 = np.array([[-1.5, 1.5], [-1.5, 1.5], [-1.5, 1.5]])
     block2 = np.array([[-0.7, 0.7], [-0.7, 0.7], [-0.7, 0.7]])
@@ -37,8 +45,12 @@ def two_blocks() -> tuple[np.ndarray, np.ndarray]:
 @pytest.fixture
 def receiver_locations() -> np.ndarray:
     """
-    grid of recievers for testing
-    :return: (n, 3) array of receiver locations
+    a grid of receivers for testing
+
+    Returns
+    -------
+    np.ndarray
+        (n, 3) array of receiver locations
     """
     # Create plane of observations
     nx, ny = 5, 5
@@ -52,8 +64,12 @@ def receiver_locations() -> np.ndarray:
 @pytest.fixture
 def inducing_field() -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """
-    inducing field two ways
-    :return: (amplitude, inclination, declination), (b_x, b_y, b_z)
+    inducing field two ways-- (amplitude, inclination , declination) and (b_x, b_y, b_z)
+
+    Returns
+    -------
+    tuple[tuple[float, float, float], tuple[float, float, float]]
+        (amplitude, inclination, declination), (b_x, b_y, b_z)
     """
     H0 = (50000.0, 60.0, 250.0)
     b0 = mag.analytics.IDTtoxyz(-H0[1], H0[2], H0[0])
@@ -64,10 +80,19 @@ def get_block_inds(grid: np.ndarray, block: np.ndarray) -> np.ndarray:
     """
     get the indices for a block
 
-    :param grid: (n, 3) array of xyz locations
-    :param block: (3, 2) array of (xmin, xmax), (ymin, ymax), (zmin, zmax) dimensions of the block
-    :return boolean array of
+    Parameters
+    ----------
+    grid : np.ndarray
+        (n, 3) array of xyz locations
+    block : np.ndarray
+        (3, 2) array of (xmin, xmax), (ymin, ymax), (zmin, zmax) dimensions of the block
+
+    Returns
+    -------
+    np.ndarray
+        boolean array of indices corresponding to the block
     """
+
     return np.where(
         (grid[:, 0] > block[0, 0])
         & (grid[:, 0] < block[0, 1])
@@ -86,11 +111,25 @@ def create_block_model(
     """
     Create a magnetic model from a sequence of blocks
 
-    :param mesh: TensorMesh object to put the model on
-    :param blocks: tuple of block definitions (each element is (3, 2) array of (xmin, xmax), (ymin, ymax), (zmin, zmax)
-      dimensions of the block)
-    :param block_params: tuple of parameters to assign for each block. Must be the same length as blocks.
-    :return: tuple of the magnetic model and active_cells (a boolean array)
+    Parameters
+    ----------
+    mesh : discretize.TensorMesh
+        TensorMesh object to put the model on
+    blocks : tuple[np.ndarray, ...]
+        tuple of block definitions (each element is (3, 2) array of (xmin, xmax), (ymin, ymax), (zmin, zmax)
+        dimensions of the block)
+    block_params : tuple[np.ndarray, ...]
+        tuple of parameters to assign for each block. Must be the same length as ``blocks``.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        tuple of the magnetic model and active_cells (a boolean array)
+
+    Raises
+    ------
+    ValueError
+        if ``blocks`` and ``block_params`` have incompatible dimensions
     """
     if len(blocks) != len(block_params):
         raise ValueError(
@@ -112,11 +151,21 @@ def create_mag_survey(
     """
     create a magnetic Survey
 
-    :param components: list of components to model
-    :param receiver_locations: (n, 3) array of xyz receiver lcoations
-    :param inducing_field_params: amplitude, inclination, and declination of the inducing field
-    :return: an magnetic Survey instance
+    Parameters
+    ----------
+    components : list[str]
+        list of components to model
+    receiver_locations : np.ndarray
+        (n, 3) array of xyz receiver locations
+    inducing_field_params : tuple[float, float, float]
+        amplitude, inclination, and declination of the inducing field
+
+    Returns
+    -------
+    mag.Survey
+        a magnetic Survey instance
     """
+
     receivers = mag.Point(receiver_locations, components=components)
     source_field = mag.UniformBackgroundField([receivers], *inducing_field_params)
     return mag.Survey(source_field)
