@@ -181,8 +181,16 @@ def create_mag_survey(
     ],
     ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
 )
+@pytest.mark.parametrize("store_sensitivities", ("ram", "disk", "forward_only"))
 def test_ana_mag_forward(
-    engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
+    engine,
+    parallel_kwargs,
+    store_sensitivities,
+    tmp_path,
+    mag_mesh,
+    two_blocks,
+    receiver_locations,
+    inducing_field,
 ):
     inducing_field_params, b0 = inducing_field
 
@@ -203,9 +211,10 @@ def test_ana_mag_forward(
         survey=survey,
         chiMap=identity_map,
         ind_active=active_cells,
-        store_sensitivities="forward_only",
+        sensitivity_path=str(tmp_path / f"{engine}"),
+        store_sensitivities=store_sensitivities,
         engine=engine,
-        **parallel_kwargs
+        **parallel_kwargs,
     )
 
     data = sim.dpred(model_reduced)
@@ -246,8 +255,16 @@ def test_ana_mag_forward(
     ],
     ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
 )
+@pytest.mark.parametrize("store_sensitivities", ("ram", "disk", "forward_only"))
 def test_ana_mag_grad_forward(
-    engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
+    engine,
+    parallel_kwargs,
+    store_sensitivities,
+    tmp_path,
+    mag_mesh,
+    two_blocks,
+    receiver_locations,
+    inducing_field,
 ):
     inducing_field_params, b0 = inducing_field
 
@@ -268,37 +285,42 @@ def test_ana_mag_grad_forward(
         survey=survey,
         chiMap=identity_map,
         ind_active=active_cells,
-        store_sensitivities="forward_only",
+        sensitivity_path=str(tmp_path / f"{engine}"),
+        store_sensitivities=store_sensitivities,
         engine=engine,
-        **parallel_kwargs
+        **parallel_kwargs,
     )
+    if engine == "choclo":
+        # gradient simulation not implemented for choclo yet
+        with pytest.raises(NotImplementedError):
+            data = sim.dpred(model_reduced)
+    else:
+        data = sim.dpred(model_reduced)
+        d_xx = data[0::6]
+        d_xy = data[1::6]
+        d_xz = data[2::6]
+        d_yy = data[3::6]
+        d_yz = data[4::6]
+        d_zz = data[5::6]
 
-    data = sim.dpred(model_reduced)
-    d_xx = data[0::6]
-    d_xy = data[1::6]
-    d_xz = data[2::6]
-    d_yy = data[3::6]
-    d_yz = data[4::6]
-    d_zz = data[5::6]
+        # Compute analytical response from magnetic prism
+        block1, block2 = two_blocks
+        prism_1 = MagneticPrism(block1[:, 0], block1[:, 1], chi1 * b0 / mu_0)
+        prism_2 = MagneticPrism(block2[:, 0], block2[:, 1], -chi1 * b0 / mu_0)
+        prism_3 = MagneticPrism(block2[:, 0], block2[:, 1], chi2 * b0 / mu_0)
 
-    # Compute analytical response from magnetic prism
-    block1, block2 = two_blocks
-    prism_1 = MagneticPrism(block1[:, 0], block1[:, 1], chi1 * b0 / mu_0)
-    prism_2 = MagneticPrism(block2[:, 0], block2[:, 1], -chi1 * b0 / mu_0)
-    prism_3 = MagneticPrism(block2[:, 0], block2[:, 1], chi2 * b0 / mu_0)
+        d = (
+            prism_1.magnetic_field_gradient(receiver_locations)
+            + prism_2.magnetic_field_gradient(receiver_locations)
+            + prism_3.magnetic_field_gradient(receiver_locations)
+        ) * mu_0
 
-    d = (
-        prism_1.magnetic_field_gradient(receiver_locations)
-        + prism_2.magnetic_field_gradient(receiver_locations)
-        + prism_3.magnetic_field_gradient(receiver_locations)
-    ) * mu_0
-
-    np.testing.assert_allclose(d_xx, d[..., 0, 0], rtol=1e-10, atol=1e-12)
-    np.testing.assert_allclose(d_xy, d[..., 0, 1], rtol=1e-10, atol=1e-12)
-    np.testing.assert_allclose(d_xz, d[..., 0, 2], rtol=1e-10, atol=1e-12)
-    np.testing.assert_allclose(d_yy, d[..., 1, 1], rtol=1e-10, atol=1e-12)
-    np.testing.assert_allclose(d_yz, d[..., 1, 2], rtol=1e-10, atol=1e-12)
-    np.testing.assert_allclose(d_zz, d[..., 2, 2], rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(d_xx, d[..., 0, 0], rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(d_xy, d[..., 0, 1], rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(d_xz, d[..., 0, 2], rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(d_yy, d[..., 1, 1], rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(d_yz, d[..., 1, 2], rtol=1e-10, atol=1e-12)
+        np.testing.assert_allclose(d_zz, d[..., 2, 2], rtol=1e-10, atol=1e-12)
 
 
 @pytest.mark.parametrize(
@@ -311,8 +333,16 @@ def test_ana_mag_grad_forward(
     ],
     ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
 )
+@pytest.mark.parametrize("store_sensitivities", ("ram", "disk", "forward_only"))
 def test_ana_mag_vec_forward(
-    engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
+    engine,
+    parallel_kwargs,
+    store_sensitivities,
+    tmp_path,
+    mag_mesh,
+    two_blocks,
+    receiver_locations,
+    inducing_field,
 ):
     inducing_field_params, b0 = inducing_field
     M1 = (utils.mat_utils.dip_azimuth2cartesian(45, -40) * 0.05).squeeze()
@@ -334,10 +364,11 @@ def test_ana_mag_vec_forward(
         survey=survey,
         chiMap=identity_map,
         ind_active=active_cells,
-        store_sensitivities="forward_only",
+        sensitivity_path=str(tmp_path / f"{engine}"),
+        store_sensitivities=store_sensitivities,
         model_type="vector",
         engine=engine,
-        **parallel_kwargs
+        **parallel_kwargs,
     )
 
     data = sim.dpred(model_reduced).reshape(-1, 4)
@@ -371,8 +402,16 @@ def test_ana_mag_vec_forward(
     ],
     ids=["geoana_serial", "geoana_parallel", "choclo_serial", "choclo_parallel"],
 )
+@pytest.mark.parametrize("store_sensitivities", ("ram", "disk", "forward_only"))
 def test_ana_mag_amp_forward(
-    engine, parallel_kwargs, mag_mesh, two_blocks, receiver_locations, inducing_field
+    engine,
+    parallel_kwargs,
+    store_sensitivities,
+    tmp_path,
+    mag_mesh,
+    two_blocks,
+    receiver_locations,
+    inducing_field,
 ):
     inducing_field_params, b0 = inducing_field
     M1 = (utils.mat_utils.dip_azimuth2cartesian(45, -40) * 0.05).squeeze()
@@ -394,11 +433,12 @@ def test_ana_mag_amp_forward(
         survey=survey,
         chiMap=identity_map,
         ind_active=active_cells,
-        store_sensitivities="forward_only",
+        sensitivity_path=str(tmp_path / f"{engine}"),
+        store_sensitivities=store_sensitivities,
         model_type="vector",
         is_amplitude_data=True,
         engine=engine,
-        **parallel_kwargs
+        **parallel_kwargs,
     )
 
     data = sim.dpred(model_reduced)
