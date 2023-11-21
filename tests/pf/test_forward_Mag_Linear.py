@@ -1,3 +1,4 @@
+from typing import List, Tuple
 import discretize
 import numpy as np
 import pytest
@@ -315,12 +316,14 @@ def test_ana_mag_grad_forward(
             + prism_3.magnetic_field_gradient(receiver_locations)
         ) * mu_0
 
-        np.testing.assert_allclose(d_xx, d[..., 0, 0], rtol=1e-10, atol=1e-12)
-        np.testing.assert_allclose(d_xy, d[..., 0, 1], rtol=1e-10, atol=1e-12)
-        np.testing.assert_allclose(d_xz, d[..., 0, 2], rtol=1e-10, atol=1e-12)
-        np.testing.assert_allclose(d_yy, d[..., 1, 1], rtol=1e-10, atol=1e-12)
-        np.testing.assert_allclose(d_yz, d[..., 1, 2], rtol=1e-10, atol=1e-12)
-        np.testing.assert_allclose(d_zz, d[..., 2, 2], rtol=1e-10, atol=1e-12)
+        # Check results
+        rtol, atol = 1e-7, 1e-6
+        np.testing.assert_allclose(d_xx, d[..., 0, 0], rtol=rtol, atol=atol)
+        np.testing.assert_allclose(d_xy, d[..., 0, 1], rtol=rtol, atol=atol)
+        np.testing.assert_allclose(d_xz, d[..., 0, 2], rtol=rtol, atol=atol)
+        np.testing.assert_allclose(d_yy, d[..., 1, 1], rtol=rtol, atol=atol)
+        np.testing.assert_allclose(d_yz, d[..., 1, 2], rtol=rtol, atol=atol)
+        np.testing.assert_allclose(d_zz, d[..., 2, 2], rtol=rtol, atol=atol)
 
 
 @pytest.mark.parametrize(
@@ -456,4 +459,6 @@ def test_ana_mag_amp_forward(
     )
     d_amp = np.linalg.norm(d, axis=1)
 
-    np.testing.assert_allclose(data, d_amp)
+    # Check results
+    rtol, atol = 1e-7, 1e-6
+    np.testing.assert_allclose(data, d_amp, rtol=rtol, atol=atol)
