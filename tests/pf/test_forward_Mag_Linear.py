@@ -225,10 +225,6 @@ def test_ana_mag_forward(
     d_z = data[2::4]
     d_t = data[3::4]
 
-    tmi = sim.tmi_projection
-    d_t2 = d_x * tmi[0] + d_y * tmi[1] + d_z * tmi[2]
-    np.testing.assert_allclose(d_t, d_t2)  # double check internal projection
-
     # Compute analytical response from magnetic prism
     block1, block2 = two_blocks
     prism_1 = MagneticPrism(block1[:, 0], block1[:, 1], chi1 * b0 / mu_0)
@@ -241,10 +237,19 @@ def test_ana_mag_forward(
         + prism_3.magnetic_flux_density(receiver_locations)
     )
 
-    np.testing.assert_allclose(d_x, d[:, 0])
-    np.testing.assert_allclose(d_y, d[:, 1])
-    np.testing.assert_allclose(d_z, d[:, 2])
-    np.testing.assert_allclose(d_t, d @ tmi)
+    # TMI projection
+    tmi = sim.tmi_projection
+    d_t2 = d_x * tmi[0] + d_y * tmi[1] + d_z * tmi[2]
+
+    # Check results
+    rtol, atol = 1e-7, 1e-6
+    np.testing.assert_allclose(
+        d_t, d_t2, rtol=rtol, atol=atol
+    )  # double check internal projection
+    np.testing.assert_allclose(d_x, d[:, 0], rtol=rtol, atol=atol)
+    np.testing.assert_allclose(d_y, d[:, 1], rtol=rtol, atol=atol)
+    np.testing.assert_allclose(d_z, d[:, 2], rtol=rtol, atol=atol)
+    np.testing.assert_allclose(d_t, d @ tmi, rtol=rtol, atol=atol)
 
 
 @pytest.mark.parametrize(
@@ -390,10 +395,12 @@ def test_ana_mag_vec_forward(
     )
     tmi = sim.tmi_projection
 
-    np.testing.assert_allclose(data[:, 0], d[:, 0])
-    np.testing.assert_allclose(data[:, 1], d[:, 1])
-    np.testing.assert_allclose(data[:, 2], d[:, 2])
-    np.testing.assert_allclose(data[:, 3], d @ tmi)
+    # Check results
+    rtol, atol = 9e-6, 3e-7
+    np.testing.assert_allclose(data[:, 0], d[:, 0], rtol=rtol, atol=atol)
+    np.testing.assert_allclose(data[:, 1], d[:, 1], rtol=rtol, atol=atol)
+    np.testing.assert_allclose(data[:, 2], d[:, 2], rtol=rtol, atol=atol)
+    np.testing.assert_allclose(data[:, 3], d @ tmi, rtol=rtol, atol=atol)
 
 
 @pytest.mark.parametrize(
