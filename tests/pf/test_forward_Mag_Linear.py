@@ -1,4 +1,5 @@
 from typing import List, Tuple
+
 import discretize
 import numpy as np
 import pytest
@@ -29,14 +30,14 @@ def mag_mesh() -> discretize.TensorMesh:
 
 
 @pytest.fixture
-def two_blocks() -> tuple[np.ndarray, np.ndarray]:
+def two_blocks() -> Tuple[np.ndarray, np.ndarray]:
     """
     The parameters defining two blocks
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
-        tuple of (3, 2) arrays of (xmin, xmax), (ymin, ymax), (zmin, zmax) dimensions of each block
+    Tuple[np.ndarray, np.ndarray]
+        Tuple of (3, 2) arrays of (xmin, xmax), (ymin, ymax), (zmin, zmax) dimensions of each block
     """
     block1 = np.array([[-1.5, 1.5], [-1.5, 1.5], [-1.5, 1.5]])
     block2 = np.array([[-0.7, 0.7], [-0.7, 0.7], [-0.7, 0.7]])
@@ -63,13 +64,13 @@ def receiver_locations() -> np.ndarray:
 
 
 @pytest.fixture
-def inducing_field() -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+def inducing_field() -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
     """
     inducing field two ways-- (amplitude, inclination , declination) and (b_x, b_y, b_z)
 
     Returns
     -------
-    tuple[tuple[float, float, float], tuple[float, float, float]]
+    Tuple[Tuple[float, float, float], Tuple[float, float, float]]
         (amplitude, inclination, declination), (b_x, b_y, b_z)
     """
     H0 = (50000.0, 60.0, 250.0)
@@ -106,9 +107,9 @@ def get_block_inds(grid: np.ndarray, block: np.ndarray) -> np.ndarray:
 
 def create_block_model(
     mesh: discretize.TensorMesh,
-    blocks: tuple[np.ndarray, ...],
-    block_params: tuple[np.ndarray, ...],
-) -> tuple[np.ndarray, np.ndarray]:
+    blocks: Tuple[np.ndarray, ...],
+    block_params: Tuple[np.ndarray, ...],
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Create a magnetic model from a sequence of blocks
 
@@ -116,16 +117,16 @@ def create_block_model(
     ----------
     mesh : discretize.TensorMesh
         TensorMesh object to put the model on
-    blocks : tuple[np.ndarray, ...]
-        tuple of block definitions (each element is (3, 2) array of (xmin, xmax), (ymin, ymax), (zmin, zmax)
+    blocks : Tuple[np.ndarray, ...]
+        Tuple of block definitions (each element is (3, 2) array of (xmin, xmax), (ymin, ymax), (zmin, zmax)
         dimensions of the block)
-    block_params : tuple[np.ndarray, ...]
-        tuple of parameters to assign for each block. Must be the same length as ``blocks``.
+    block_params : Tuple[np.ndarray, ...]
+        Tuple of parameters to assign for each block. Must be the same length as ``blocks``.
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
-        tuple of the magnetic model and active_cells (a boolean array)
+    Tuple[np.ndarray, np.ndarray]
+        Tuple of the magnetic model and active_cells (a boolean array)
 
     Raises
     ------
@@ -145,20 +146,20 @@ def create_block_model(
 
 
 def create_mag_survey(
-    components: list[str],
+    components: List[str],
     receiver_locations: np.ndarray,
-    inducing_field_params: tuple[float, float, float],
+    inducing_field_params: Tuple[float, float, float],
 ) -> mag.Survey:
     """
     create a magnetic Survey
 
     Parameters
     ----------
-    components : list[str]
-        list of components to model
+    components : List[str]
+        List of components to model
     receiver_locations : np.ndarray
         (n, 3) array of xyz receiver locations
-    inducing_field_params : tuple[float, float, float]
+    inducing_field_params : Tuple[float, float, float]
         amplitude, inclination, and declination of the inducing field
 
     Returns
