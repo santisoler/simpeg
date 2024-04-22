@@ -146,6 +146,7 @@ from . import maps
 from . import models
 from . import inverse_problem
 from . import inversion
+from . import potential_fields
 from . import regularization
 from . import survey
 from . import simulation
