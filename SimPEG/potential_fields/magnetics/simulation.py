@@ -11,9 +11,11 @@ from geoana.kernels import (
 )
 from scipy.constants import mu_0
 
-from SimPEG import Solver, props, utils
-from SimPEG.utils import mat_utils, mkvc, sdiag
-from SimPEG.utils.code_utils import deprecate_property, validate_string, validate_type
+from ... import props
+from ... import utils
+from ...utils.solver_utils import Solver
+from ...utils import mat_utils, mkvc, sdiag
+from ...utils.code_utils import deprecate_property, validate_string, validate_type
 
 from ...base import BaseMagneticPDESimulation
 from ..base import BaseEquivalentSourceLayerSimulation, BasePFSimulation
