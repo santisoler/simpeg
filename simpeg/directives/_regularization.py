@@ -65,6 +65,16 @@ class UpdateIRLS(InversionDirective):
         Percentile of the function values used to determine the initial IRLS threshold.
     verbose: bool
         Print information to the screen.
+
+
+    Notes
+    -----
+
+    We should explain in detail the stopping criteria implemented in this
+    directive.
+
+    We should also warn users not to use a TargetMisfit or any other directive
+    than can stop the inversion.
     """
 
     def __init__(
@@ -74,7 +84,7 @@ class UpdateIRLS(InversionDirective):
         chifact_start: float = 1.0,
         chifact_target: float = 1.0,
         irls_cooling_factor: float = 1.2,
-        f_min_change: float = 1e-2,
+        f_min_change: float = 1e-2,  # we should probably rename this to phim_min_change or regularization_min_change
         max_irls_iterations: int = 20,
         misfit_tolerance: float = 1e-1,
         percentile: float = 100.0,
@@ -403,17 +413,21 @@ class UpdateIRLS(InversionDirective):
                 )
             return True
 
+        # Don't stop the inversion if the previous value of phi_m is zero
+        if self.metrics.f_old == 0:
+            self.metrics.f_old = phim_new
+            return False
+
         # Check if the function has changed enough
-        f_change = np.abs(self.metrics.f_old - phim_new) / (self.metrics.f_old + 1e-12)
+        phi_m_change = (phim_new - self.metrics.f_old) / (self.metrics.f_old)
+        chi_difference = 1.0 - self.invProb.phi_d / self.misfit_from_chi_factor(
+            self.chifact_target
+        )
 
         if (
-            f_change < self.f_min_change
+            0 < phi_m_change < self.f_min_change
             and self.metrics.irls_iteration_count > 1
-            and np.abs(
-                1.0
-                - self.invProb.phi_d / self.misfit_from_chi_factor(self.chifact_target)
-            )
-            < self.misfit_tolerance
+            and 0 < chi_difference < self.misfit_tolerance
         ):
             if self.verbose:
                 print("Minimum decrease in regularization. End of IRLS")
