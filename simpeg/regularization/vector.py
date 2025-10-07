@@ -29,7 +29,7 @@ class BaseVectorRegularization(BaseRegularization):
         Returns
         -------
         list of tuple
-            Each tuple represents accetable shapes for the weights
+            Each tuple represents acceptable shapes for the weights
         """
         mesh = self.regularization_mesh
 
@@ -389,12 +389,40 @@ class BaseAmplitude(BaseVectorRegularization):
         (n_cells, ) numpy.ndarray
             The amplitudes of the vectors for the model provided.
         """
-        return np.linalg.norm(
-            (self.mapping * self._delta_m(m)).reshape(
-                (self.regularization_mesh.nC, self.n_comp), order="F"
-            ),
-            axis=1,
-        )
+        m_matrix = self._get_model_matrix(self.mapping * self._delta_m(m))
+        return np.linalg.norm(m_matrix, axis=1)
+
+    def _get_amplitude(self, m):
+        """Return vector amplitudes for the model provided.
+
+        Where the model `m` defines a vector quantity for each active cell in the
+        inversion, the `amplitude` method returns the amplitudes of these vectors.
+
+        Parameters
+        ----------
+        m : (n_param ) numpy.ndarray
+            The model.
+
+        Returns
+        -------
+        (n_cells, ) numpy.ndarray
+            The amplitudes of the vectors for the model provided.
+        """
+        m_matrix = self._to_2d_array(m)
+        return np.linalg.norm(m_matrix, axis=1)
+
+    def _to_2d_array(self, array):
+        """
+        Reshape (n_comp * n) array to (n, n_comp) using Fortran order.
+        """
+        shape = (-1, self.n_comp)
+        return array.reshape(shape, order="F")
+
+    def _flatten(self, vector):
+        """
+        Flatten vector using Fortran order.
+        """
+        return vector.flatten(order="F")
 
     def deriv(self, m) -> np.ndarray:
         r"""Gradient of the regularization function evaluated for the model provided.
@@ -623,39 +651,96 @@ class AmplitudeSmallness(SparseSmallness, BaseAmplitude):
     >>> reg.set_weights(weights_1=array_1, weights_2=array_2})
     """
 
-    def f_m(self, m):
-        r"""Evaluate the regularization kernel function.
-
-        For smallness vector amplitude regularization, the regularization kernel function is:
-
-        .. math::
-            \mathbf{f_m}(\mathbf{m}) = \mathbf{\bar{m}} = \bigg (
-            \Big [ \mathbf{m}_p - \mathbf{m}_p^{(ref)} \Big ]^2 +
-            \Big [ \mathbf{m}_s - \mathbf{m}_s^{(ref)} \Big ]^2 +
-            \Big [ \mathbf{m}_t - \mathbf{m}_t^{(ref)} \Big ]^2 \bigg )^{1/2}
-
-        where the global set of model parameters :math:`\mathbf{m}` defined at cell centers is
-        ordered according to its primary (:math:`p`), secondary (:math:`s`) and tertiary (:math:`t`)
-        directions as follows:
-
-        .. math::
-            \mathbf{m} = \begin{bmatrix} \mathbf{m}_p \\ \mathbf{m}_s \\ \mathbf{m}_t \end{bmatrix}
-
-        Likewise for the vector components of the reference model.
+    def __call__(self, m):
+        """Evaluate the regularization function for the model provided.
 
         Parameters
         ----------
-        m : numpy.ndarray
-            The model.
+        m : (n_param, ) numpy.ndarray
+            The model for which the function is evaluated.
 
         Returns
         -------
-        numpy.ndarray
-            The regularization kernel function evaluated at the model provided.
-
+        float
+            The regularization function evaluated for the model provided.
         """
+        if self.reference_model is None:
+            r = self.W * self._get_amplitude(self.mapping * m)
+        else:
+            r = self.W * (
+                self._get_amplitude(self.mapping * m)
+                - self._get_amplitude(self.mapping * self.reference_model)
+            )
+        return r.T @ r
 
-        return self.amplitude(m)
+    def deriv(self, m) -> np.ndarray:
+        r"""Gradient of the regularization function evaluated for the model provided.
+
+        Where :math:`\phi (\mathbf{m})` is the discrete regularization function (objective function),
+        this method evaluates and returns the derivative with respect to the model parameters;
+        i.e. the gradient:
+
+        .. math::
+            \frac{\partial \phi}{\partial \mathbf{m}}
+
+        Parameters
+        ----------
+        m : (n_param, ) numpy.ndarray
+            The model for which the gradient is evaluated.
+
+        Returns
+        -------
+        (n_param, ) numpy.ndarray
+            Gradient of the regularization function evaluated for the model provided.
+        """
+        delta_m = (
+            self.mapping * m
+            if self.reference_model is None
+            else self.mapping * m - self.mapping * self.reference_model
+        )
+        model_matrix = self._to_2d_array(delta_m)
+        deriv = (
+            2
+            * self.mapping.deriv(m).T
+            @ self._flatten(self.W.T @ self.W @ model_matrix)
+        )
+        return deriv
+
+    def deriv2(self, m, v=None) -> csr_matrix:
+        r"""Hessian of the regularization function evaluated for the model provided.
+
+        Where :math:`\phi(\mathbf{m})` is the discrete regularization function
+        (objective function), this method returns the second-derivative (Hessian) with
+        respect to the model parameters:
+
+        .. math::
+            \frac{\partial^2 \phi}{\partial \mathbf{m}^2}
+
+        or the second-derivative (Hessian) multiplied by a vector :math:`(\mathbf{v})`:
+
+        .. math::
+            \frac{\partial^2 \phi}{\partial \mathbf{m}^2} \, \mathbf{v}
+
+        Parameters
+        ----------
+        m : (n_param, ) numpy.ndarray
+            The model for which the Hessian is evaluated.
+        v : None, (n_param, ) numpy.ndarray (optional)
+            A vector.
+
+        Returns
+        -------
+        (n_param, n_param) scipy.sparse.csr_matrix | (n_param, ) numpy.ndarray
+            If the input argument *v* is ``None``, the Hessian of the regularization
+            function for the model provided is returned. If *v* is not ``None``,
+            the Hessian multiplied by the vector provided is returned.
+        """
+        # TODO: need to expand the weights to return the hessian matrix
+        mapping_deriv = self.mapping.deriv(m)
+        deriv_2 = 2 * mapping_deriv.T @ self.W.T @ self.W @ mapping_deriv
+        if v is None:
+            return deriv_2
+        return (deriv_2 @ v).flatten(order="F")
 
     @property
     def W(self):

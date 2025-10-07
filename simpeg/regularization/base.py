@@ -664,7 +664,9 @@ class Smallness(BaseRegularization):
 
         where :math:`\mathbf{I}` is the identity matrix.
         """
-        return self.mapping.deriv(self._delta_m(m))
+        tmp = self.mapping.deriv(self._delta_m(m))
+        breakpoint()
+        return tmp
 
 
 class SmoothnessFirstOrder(BaseRegularization):
